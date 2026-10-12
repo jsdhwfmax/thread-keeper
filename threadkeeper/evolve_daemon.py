@@ -61,6 +61,7 @@ from .github_budget import run_gh, split_gh_api_output, strip_gh_api_headers
 from .helpers import daemon_sleep, single_flight_lock
 from .permissions import chmod_private_file
 from . import identity
+from .workflow_artifacts import record_research_consumed
 
 logger = logging.getLogger(__name__)
 
@@ -1573,6 +1574,13 @@ def run_evolve_pass(force: bool = False) -> str:
                     research_text,
                     research_path.name if research_path else "",
                 )
+                if out.startswith("spawned audit") and research_path is not None:
+                    record_research_consumed(
+                        conn,
+                        research_path=research_path,
+                        research_body=research_text,
+                        now=now_t,
+                    )
             else:
                 out = _spawn_research(repo_root, now_t)
         except Exception as e:  # noqa: BLE001 — never crash the daemon
