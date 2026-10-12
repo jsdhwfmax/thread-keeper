@@ -317,8 +317,10 @@ Steady-state access is split by intent:
    also retain file archives under `<curator_reports_dir>/snapshots/<pass-id>/`;
    each contains `lessons.md`, copied in-scope skill dirs, `manifest.json`, and
    tombstones emitted by curator prune/delete tool calls. `curator_restore`
-   restores a lesson or skill from that archive. Retention is bounded by
-   `THREADKEEPER_CURATOR_SNAPSHOT_RETENTION`.
+   restores a lesson or skill from that archive. Active, failed, and endorsed
+   but unapplied work keeps its recovery material. Terminal applied passes use
+   the workflow age/count policy, compacting frozen bodies before deleting
+   owned reports, manifests, snapshots, and research handoffs.
 
 8. **dialectic_claims + dialectic_evidence** — Honcho-style discrete user
    model. Claim with a domain, evidence support/contradict/clarifying, sm-ratio
@@ -1828,7 +1830,7 @@ below).
 | authority | memory_authorize_action |
 | invariants | find_invariants |
 | missed_spawns | find_missed_spawns |
-| db_maintenance | db_compact, db_deduplicate_embeddings |
+| db_maintenance | db_compact, db_deduplicate_embeddings, workflow_retention_preview |
 | sync | sync_status, sync_peers, sync_now |
 | config_watch | config_watch_status, config_reload |
 | panel | convene_panel |
@@ -2111,6 +2113,8 @@ unsupported CLI overrides still fall through to the next priority, and
 | `THREADKEEPER_PROBE_RESULT_RETENTION_DAYS` | 0 | prune old `probe_results` and refresh reliability aggregates; 0 keeps forever |
 | `THREADKEEPER_RETENTION_WAL_CHECKPOINT` | false | run `PRAGMA wal_checkpoint(TRUNCATE)` during retention passes |
 | `THREADKEEPER_RETENTION_VACUUM_AFTER_ROWS` | 0 | run `VACUUM` after at least this many deleted rows; 0 disables |
+| `THREADKEEPER_WORKFLOW_RETENTION_DAYS` | 30 | terminal Curator/Evolve artifact age protection; `0` disables it |
+| `THREADKEEPER_WORKFLOW_RETENTION_COUNT` | 100 | newest terminal Curator/Evolve artifacts protected by count; `0` disables it |
 | `THREADKEEPER_MEMORY_EGRESS` | `all` | personal-class memory egress scope: `all` / `same-vendor` / `work-only` (see Spawn → Cross-provider memory egress) |
 | `THREADKEEPER_EMBED_MODEL` | paraphrase-multilingual-MiniLM-L12-v2 | 384-dim, RU+EN |
 | `THREADKEEPER_EMBED_BACKEND` | `onnx` | `onnx` (fastembed, no PyTorch) or `sentence-transformers` (fallback) |

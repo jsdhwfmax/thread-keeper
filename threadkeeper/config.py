@@ -411,6 +411,11 @@ class Settings(BaseSettings):
     # one curator pass. 0 disables curator lesson/skill deletes for that pass;
     # foreground deletes are never subject to this limit.
     curator_max_destructive_per_pass: int = 10
+    # Terminal Curator/Evolve workflow output can include frozen memory bodies.
+    # Age and count each protect recent artifacts; setting both to zero disables
+    # workflow pruning.
+    workflow_retention_days: float = 30.0
+    workflow_retention_count: int = 100
     # Maximum curator child batches that may be live at once. Spawn itself
     # still makes the atomic global RSS-budget decision; this cap keeps one
     # pass from racing a burst of asynchronous launches against that budget.
@@ -940,6 +945,8 @@ def _derive_constants(s: "Settings") -> dict:
         "CURATOR_MAX_DESTRUCTIVE_PER_PASS": (
             s.curator_max_destructive_per_pass
         ),
+        "WORKFLOW_RETENTION_DAYS": s.workflow_retention_days,
+        "WORKFLOW_RETENTION_COUNT": s.workflow_retention_count,
         "CURATOR_MAX_CONCURRENT_BATCHES": s.curator_max_concurrent_batches,
         "CURATOR_BATCH_POLL_S": s.curator_batch_poll_s,
         "CURATOR_WEB_RESEARCH": bool(s.curator_web_research),

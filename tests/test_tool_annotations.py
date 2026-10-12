@@ -38,6 +38,7 @@ READ_TOOLS = {
     "skill_validate", "spawn_budget_status", "spawn_status",
     "sync_peers", "sync_status", "task_logs",
     "task_thread", "tasks", "weak_spots", "whoami", "wikilink_health",
+    "workflow_retention_preview",
     "lesson_neighbors",
 }
 

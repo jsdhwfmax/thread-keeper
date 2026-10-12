@@ -990,6 +990,29 @@ CREATE TABLE IF NOT EXISTS curator_merge_verdicts (
 );
 CREATE INDEX IF NOT EXISTS idx_curator_merge_verdicts_updated
     ON curator_merge_verdicts(updated_at DESC);
+
+-- Retention state is intentionally separate from the active Curator and
+-- Evolve manifests.  Those manifests remain the source of truth while work
+-- is live; these small rows only record that a terminal artifact has been
+-- compacted and can be removed on a later pass.
+CREATE TABLE IF NOT EXISTS workflow_retention_passes (
+    pass_id      TEXT PRIMARY KEY,
+    compacted_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workflow_artifact_deletions (
+    path        TEXT PRIMARY KEY,
+    root_path   TEXT NOT NULL,
+    state       TEXT NOT NULL CHECK(state IN ('pending','failed','deleted')),
+    bytes       INTEGER NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workflow_retention_state (
+    name         TEXT PRIMARY KEY,
+    last_at      INTEGER NOT NULL,
+    last_outcome TEXT NOT NULL
+);
 """
 
 # These columns are independently additive: current databases deliberately do
@@ -1001,6 +1024,14 @@ ADDITIVE_RUNTIME_COLUMN_MIGRATIONS = (
     "ALTER TABLE tasks ADD COLUMN trace_started_ns INTEGER",
     "ALTER TABLE tasks ADD COLUMN trace_queue_wait_ms INTEGER",
     "ALTER TABLE tasks ADD COLUMN trace_exported_at INTEGER",
+    "ALTER TABLE curator_batches ADD COLUMN workflow_batch_sha256 TEXT",
+    "ALTER TABLE curator_batches ADD COLUMN workflow_batch_summary TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE curator_batches ADD COLUMN workflow_compacted_at INTEGER",
+    "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_at INTEGER",
+    "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_body TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_summary TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_compacted_at INTEGER",
+    "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_path_deleted INTEGER NOT NULL DEFAULT 0",
 )
 
 # Historical column migrations layered on top of the baseline SCHEMA.

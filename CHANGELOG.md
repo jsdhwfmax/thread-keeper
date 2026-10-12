@@ -7,6 +7,11 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: bounded durable workflow artifacts (#349).** Terminal Curator
+  passes and consumed Evolve research handoffs follow configurable age/count
+  retention. Expired frozen bodies compact to a hash and bounded summary before
+  owned reports, manifests, snapshots, and handoff files are safely removed.
+
 - **Changed: the Evolve applier lands your green PRs.** Before, only the
   conflict-repair child merged, and the sweep only acted on conflicted (`DIRTY`)
   PRs. With strict branch protection every merge leaves the other open PRs
