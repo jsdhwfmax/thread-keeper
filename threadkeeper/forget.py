@@ -647,6 +647,14 @@ def _populate_counts(conn: sqlite3.Connection, plan: ForgetPlan) -> None:
         "cursors": len(plan.cursor_ids),
         "presence": len(plan.presence_ids),
     }
+    try:
+        from .workflow_artifacts import selective_erase_count
+
+        counts["workflow_artifacts"] = selective_erase_count(
+            conn, plan.selector,
+        )
+    except sqlite3.Error:
+        counts["workflow_artifacts"] = 0
     plan.counts = counts
 
 
@@ -780,6 +788,11 @@ def _apply_forget(conn: sqlite3.Connection, plan: ForgetPlan) -> dict[str, int]:
     conn.commit()
     conn.execute("BEGIN IMMEDIATE")
     try:
+        from .workflow_artifacts import selectively_erase_bodies
+
+        deleted["workflow_artifacts"] = selectively_erase_bodies(
+            conn, plan.selector,
+        )
         from .authority import invalidate_descendants
         deleted["memory_authority_invalidated"] = invalidate_descendants(
             conn, plan.authority_roots,
