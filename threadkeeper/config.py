@@ -411,6 +411,11 @@ class Settings(BaseSettings):
     # one curator pass. 0 disables curator lesson/skill deletes for that pass;
     # foreground deletes are never subject to this limit.
     curator_max_destructive_per_pass: int = 10
+    # Terminal Curator/Evolve workflow output can include frozen memory bodies.
+    # Age and count each protect recent artifacts; setting both to zero disables
+    # workflow pruning.
+    workflow_retention_days: float = 30.0
+    workflow_retention_count: int = 100
     # Maximum curator child batches that may be live at once. Spawn itself
     # still makes the atomic global RSS-budget decision; this cap keeps one
     # pass from racing a burst of asynchronous launches against that budget.
@@ -473,6 +478,11 @@ class Settings(BaseSettings):
     # Periodically picks the top promoted+unapplied evolve suggestion and fires
     # evolve_apply (spawns a child that implements it + opens a PR). 0 = off.
     evolve_apply_interval_s: float = 0.0
+    # Land your own PRs: the parent squash-merges an open non-draft PR authored
+    # by the account `gh` acts as once GitHub reports it up to date with
+    # required checks green, and updates one that fell behind. Other accounts'
+    # PRs are never touched. 0 = a human merges every PR.
+    evolve_autoland: bool = True
     # Absolute path to the thread-keeper git checkout the evolve reviewer and
     # applier operate on (branch, run tests, open PRs against). Empty => resolve
     # automatically: the package's parent dir when it is itself a checkout (the
@@ -935,6 +945,8 @@ def _derive_constants(s: "Settings") -> dict:
         "CURATOR_MAX_DESTRUCTIVE_PER_PASS": (
             s.curator_max_destructive_per_pass
         ),
+        "WORKFLOW_RETENTION_DAYS": s.workflow_retention_days,
+        "WORKFLOW_RETENTION_COUNT": s.workflow_retention_count,
         "CURATOR_MAX_CONCURRENT_BATCHES": s.curator_max_concurrent_batches,
         "CURATOR_BATCH_POLL_S": s.curator_batch_poll_s,
         "CURATOR_WEB_RESEARCH": bool(s.curator_web_research),
@@ -959,6 +971,7 @@ def _derive_constants(s: "Settings") -> dict:
         "EVOLVE_REVIEW_MIN": s.evolve_review_min,
         "EVOLVE_REVIEW_BACKLOG_MAX": s.evolve_review_backlog_max,
         "EVOLVE_APPLY_INTERVAL_S": s.evolve_apply_interval_s,
+        "EVOLVE_AUTOLAND": bool(s.evolve_autoland),
         "EVOLVE_REPO_ROOT": s.evolve_repo_root,
         "EVOLVE_AUTO_CLONE": s.evolve_auto_clone,
         "EVOLVE_REPO_URL": s.evolve_repo_url,

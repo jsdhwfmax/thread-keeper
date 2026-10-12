@@ -8,8 +8,37 @@ remains a live question.
 
 ---
 
+## 2026-10-10 reviewer audit
+
+The resource-subscription (#345), privacy-safe tracing (#346), and
+outcome-evaluation (#347) items are complete. The remaining audit gaps are
+issue-backed and deliberately narrower:
+
+- **Standard MCP Tasks lifecycle (#370).** Give capable clients durable,
+  authorization-bound task handles with standard read and cooperative cancel
+  semantics, while preserving the current custom fallback for older hosts.
+- **Forgetting-aware store mutation evaluation (#371).** Exercise real
+  correction, supersession, consolidation, source erasure, and restart paths;
+  penalize obsolete evidence even when current evidence is also recalled.
+- **Protected-lesson freshness flags (#372).** Preserve protected lesson text
+  while attaching source-linked verified, contradicted, or unsubstantiated
+  states that are visible when the lesson is retrieved for a task.
+- **Source-missing skill reconciliation (#373).** Mark registry records without
+  a readable primary source unavailable, expose one recovery action, and allow
+  Curator to archive or remove a confirmed registry-only orphan after a
+  recoverable snapshot.
+
+The legacy task-gate suggestion was not re-filed because the setup matcher
+already recognizes `Task`, `Agent`, and `Workflow`. The two source-missing
+registry suggestions share one repair lifecycle and are consolidated in #373.
+
 ## Closed
 
+- Read-only MCP purity (#348): every `readOnlyHint=True` tool and static memory
+  resource now runs in a query-only scope. Automatic discovery/polling cannot
+  bootstrap sessions, presence/cursors, daemons, task reaping/linking, or RSS
+  writes; cached status labels freshness, and explicit write tools perform task
+  and agent-status reconciliation.
 - Spawn as primary parallelism primitive (`spawn`, `tournament`, `tasks`,
   `task_logs`, `task_kill`).
 - Privacy-safe OTLP workflow traces (#346): default-off bounded exporter links
@@ -125,8 +154,9 @@ remains a live question.
   audit or code/PR applier child can spawn, the parent rejects tracked-file WIP
   with `skipped_dirty_worktree` (untracked scratch files do not block), refuses
   overlapping reviewer/applier git writers in the shared checkout, and prompts
-  children to fetch the configured branch but branch only from the configured
-  immutable managed-checkout pin instead of arbitrary current `HEAD`.
+  children to fetch the configured branch and branch from its fresh
+  `origin/<branch>` tip instead of arbitrary current `HEAD` (the immutable
+  managed-checkout pin bounds provisioning only).
 - Evolve managed-checkout interrupted-merge recovery: a killed conflict-repair
   child no longer blocks the entire backlog whether its exact PR remains open
   or was merged elsewhere. The parent first excludes live git writers, requires
@@ -177,6 +207,12 @@ remains a live question.
   completed `tasks`, handled/ephemeral `signals`, old `events`, and old
   `probe_results`; optional WAL checkpoint and VACUUM maintenance are wired,
   and `mp_dashboard()` reports DB size plus high-volume row counts.
+- Durable Curator/Evolve workflow retention (#349): terminal Curator batches,
+  manifests, reports, snapshots, and consumed Evolve research digests now have
+  shared age/count retention. Active/retryable work and unapplied endorsed
+  reports are protected; expired bodies compact to hashes plus bounded summaries
+  before no-follow, root-contained file cleanup. Preview and dashboard output
+  show candidates, bytes, oldest terminal pass, and the last outcome.
 - Data-lifecycle backup/restore safety (#102): `tk-backup create` uses
   SQLite `VACUUM INTO` to produce an integrity-checked single-file snapshot of
   the live WAL store while writer loops continue, and `tk-backup restore --yes`

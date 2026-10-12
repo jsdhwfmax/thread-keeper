@@ -317,8 +317,10 @@ Steady-state access is split by intent:
    also retain file archives under `<curator_reports_dir>/snapshots/<pass-id>/`;
    each contains `lessons.md`, copied in-scope skill dirs, `manifest.json`, and
    tombstones emitted by curator prune/delete tool calls. `curator_restore`
-   restores a lesson or skill from that archive. Retention is bounded by
-   `THREADKEEPER_CURATOR_SNAPSHOT_RETENTION`.
+   restores a lesson or skill from that archive. Active, failed, and endorsed
+   but unapplied work keeps its recovery material. Terminal applied passes use
+   the workflow age/count policy, compacting frozen bodies before deleting
+   owned reports, manifests, snapshots, and research handoffs.
 
 8. **dialectic_claims + dialectic_evidence** — Honcho-style discrete user
    model. Claim with a domain, evidence support/contradict/clarifying, sm-ratio
@@ -655,18 +657,34 @@ moving the high-water forward; `force=True` bypasses this due gate.
   pass row directly, so accumulated skip rows can never bury it.
 - **evolve_applier** (`evolve_applier.start_evolve_applier_daemon`) — once per
   `EVOLVE_APPLY_INTERVAL_S` (default 0 = off) first fetches open GitHub PRs via
-  `gh pr list --json mergeStateStatus,mergeable,...` and repairs the oldest
-  same-repo applier PR whose merge state is conflicted (`DIRTY` /
-  `CONFLICTING`). This sweep is a hard preflight before new work: if PR state
-  cannot be read, the pass records `conflicted_pr_fetch_error` and does not
-  pick a fresh roadmap issue, Curator report, or promoted evolve suggestion.
-  Only same-repository `roadmap/…` and `evolve/…` head branches are eligible;
-  fork PRs are never fed to the privileged repair child. The repair child checks
-  out the existing PR branch, merges the current base branch, resolves
-  conflicts, runs the full suite, and pushes back to the same branch. It then
-  waits for GitHub checks on the pushed PR head and runs
-  `gh pr merge --squash --delete-branch`, so GitHub lands the PR into `main`
-  through branch protection instead of a raw local `git push origin main`.
+  `gh pr list --json mergeStateStatus,mergeable,headRefOid,author,...` and
+  keeps only PRs authored by the account `gh` acts as (`gh api user`, cached
+  per auth context for an hour); another account's PR is never updated,
+  repaired, or merged. Each kept PR is classified (`_pr_landing_action`):
+  `repair` for a conflicted merge state (`DIRTY` / `CONFLICTING`) on a
+  same-repository `roadmap/…` or `evolve/…` head branch, `update` for `BEHIND`,
+  `merge` for `CLEAN` / `HAS_HOOKS`, and `wait` for everything else (pending or
+  red checks, drafts, `UNKNOWN`, another base, a hand-made PR with conflicts,
+  or `EVOLVE_AUTOLAND=0`). This sweep is a hard preflight before new work: if
+  PR state or the `gh` account cannot be read, the pass records
+  `conflicted_pr_fetch_error` and does not pick a fresh roadmap issue, Curator
+  report, or promoted evolve suggestion. Fork PRs are never fed to the
+  privileged repair child. **Landing** (`_land_applier_prs`, parent only, no
+  child): squash-merge the oldest `merge` PR through `PUT /pulls/{n}/merge`
+  with `sha=<headRefOid>`, so a head pushed after the green read is refused,
+  then delete its same-repository head branch (never a fork's, never the
+  base); then call
+  `PUT /pulls/{n}/update-branch` with `expected_head_sha` on the oldest PR that
+  is behind (including green PRs that the merge just made behind). Strict branch
+  protection allows one merge per base commit, so one merge and one update per
+  sweep avoid CI runs the next merge would invalidate. Each attempt records an
+  `evolve_pr_landing` event; the shared GitHub budget cooldown stops the sweep.
+  Between due passes the daemon wakes every `EVOLVE_LANDING_POLL_S` (15 min) and
+  runs only `run_evolve_landing_pass()`, which skips while any reviewer/applier
+  git writer runs. Then, if a `repair` PR exists, the repair child checks out
+  the existing PR branch, merges the current base branch, resolves conflicts,
+  runs the full suite, and pushes back to the same branch; it never merges, and
+  the landing sweep lands it once GitHub reports it green.
   When no conflicted applier PR exists, it fetches open GitHub issues via the
   REST API (`gh api repos/{owner}/{repo}/issues` — needed because `gh issue
   list --json` cannot return `author_association`; pull requests in the
@@ -828,9 +846,13 @@ moving the high-water forward; `force=True` bypasses this due gate.
   while preserving unfinished work. Ignored runtime files and explicit operator
   checkouts are untouched. Applier prompts fetch the base and
   prepare or resume their deterministic local/remote feature branch before any
-  reading or editing, then rebase it on the immutable
-  `EVOLVE_REPO_COMMIT`. This makes retries validate previous branch work
-  instead of colliding with a stale local branch after editing the base.
+  reading or editing, then rebase it on the freshly fetched
+  `origin/<EVOLVE_REPO_BRANCH>` tip and re-sync the managed venv to that
+  branch's dependencies. `EVOLVE_REPO_COMMIT` gates only provisioning and the
+  parked checkout, never the branch base: a frozen base cut every applier PR
+  from one stale commit, so each was born conflicted with `main`. This makes
+  retries validate previous branch work instead of colliding with a stale local
+  branch after editing the base.
   Reviewer roadmap-doc prompts additionally reuse the daily
   `docs/roadmap-audit-YYYY-MM-DD` branch or an existing open roadmap-doc PR
   branch so repeated audits do not collide. The running-writer check precedes
@@ -1803,7 +1825,7 @@ below).
 |---|---|
 | threads | auto_review_trigger, brief, close_thread, compost, context, evolve_decide, evolve_format, evolve_issue_create, evolve_review, idle_thread, mark_skill_materialized, note, open_thread, search |
 | peers | whoami, peers, presence, broadcast, whisper, ask, respond, wait, inbox, live_status, search_via_parent |
-| spawn | spawn, tournament, tasks, task_logs, spawn_status, spawn_budget_status, spawn_budget_set |
+| spawn | spawn, tournament, tasks, tasks_refresh, task_logs, spawn_status, spawn_budget_status, spawn_budget_set |
 | skills | skill_manage, skill_record, skill_list, curator_run, review_thread |
 | dialectic | dialectic_claim, dialectic_evidence, dialectic_observation_resolve, dialectic_review, dialectic_synthesis, dialectic_supersede |
 | dialectic_feed | dialectic_mine_run, dialectic_mine_status, dialectic_validate_run, dialectic_validate_status |
@@ -1816,7 +1838,7 @@ below).
 | graph | link, unlink, neighbors |
 | pickup | pickup_candidates, claim_pickup, release_pickup |
 | lessons | lesson_append, lesson_list, lesson_get, lesson_neighbors, lesson_patch, lesson_remove, lesson_restore, lesson_violation |
-| shadow_review | shadow_review_run, shadow_review_status |
+| shadow_review | shadow_review_run, shadow_review_status, shadow_review_snapshot |
 | candidate_reviewer | candidate_review_run, candidate_review_status |
 | curator | curator_merge_verdict, curator_review, curator_review_status, skill_validate, wikilink_health, curator_research_write, curator_report_write, curator_restore |
 | evolve_research | evolve_research_handoff |
@@ -1824,7 +1846,7 @@ below).
 | style | style_set, verbatim_user |
 | process_health | mp_health, mp_cleanup |
 | dashboard | mp_dashboard |
-| agent_status | agent_status, agent_memory_cleanup |
+| agent_status | agent_status, agent_status_refresh, agent_memory_cleanup |
 | memory_guard | memory_guard_status, memory_guard_check, memory_guard_reclaim |
 | correlation | tag_signal, task_thread |
 | consolidate | consolidate |
@@ -1833,7 +1855,7 @@ below).
 | authority | memory_authorize_action |
 | invariants | find_invariants |
 | missed_spawns | find_missed_spawns |
-| db_maintenance | db_compact, db_deduplicate_embeddings |
+| db_maintenance | db_compact, db_deduplicate_embeddings, workflow_retention_preview |
 | sync | sync_status, sync_peers, sync_now |
 | config_watch | config_watch_status, config_reload |
 | panel | convene_panel |
@@ -1849,8 +1871,11 @@ Tools register through two thin wrappers in `_mcp.py` instead of bare
 `@mcp.tool()`, so `tools/list` exposes MCP 2025-06-18 `ToolAnnotations` for
 every tool:
 
-- `@read_tool()` → `readOnlyHint=True` — pure queries (`brief`, `context`,
-  `search`, `dialog_search`, the status tools, `compost`, …).
+- `@read_tool()` → `readOnlyHint=True` — observational queries (`brief`,
+  `context`, `search`, `dialog_search`, cached status tools, `compost`, …).
+  The wrapper enters a query-only SQLite scope: it must not create a session,
+  presence/cursor rows, start daemons, reap tasks, link child CIDs, persist RSS,
+  or write files. Cached output explicitly labels its freshness.
 - `@write_tool(destructive=…, idempotent=…)` → `readOnlyHint=False` —
   mutations. `lesson_list` and `lesson_get` are non-destructive writes because
   they update lesson access counters. Delete/overwrite/kill tools carry
@@ -1881,7 +1906,10 @@ the other two for the read/act split they fit naturally:
   attachable / `@`-mentionable context without the agent *remembering* to call a
   tool — the mechanical channel that hookless CLIs lacked. The brief resource
   renders `lean=True` and agent-status uses `refresh=False`, so an automatic host
-  pull is **side-effect-free** (no `*_hint_shown` events, no process re-scan).
+  pull is **side-effect-free**: even in a fresh process it cannot create
+  session/presence/cursor state, start daemons, reap tasks, or refresh RSS.
+  Reconciliation lives in explicit write tools (`tasks_refresh` and
+  `agent_status_refresh`).
   URIs are static: resource *templates* (`{param}`) are still unevenly supported
   across hosts, so parameterized URIs are a later, host-gated step.
   Each snapshot advertises `cacheScope: private`, a 30-second TTL, priority,
@@ -2110,6 +2138,8 @@ unsupported CLI overrides still fall through to the next priority, and
 | `THREADKEEPER_PROBE_RESULT_RETENTION_DAYS` | 0 | prune old `probe_results` and refresh reliability aggregates; 0 keeps forever |
 | `THREADKEEPER_RETENTION_WAL_CHECKPOINT` | false | run `PRAGMA wal_checkpoint(TRUNCATE)` during retention passes |
 | `THREADKEEPER_RETENTION_VACUUM_AFTER_ROWS` | 0 | run `VACUUM` after at least this many deleted rows; 0 disables |
+| `THREADKEEPER_WORKFLOW_RETENTION_DAYS` | 30 | terminal Curator/Evolve artifact age protection; `0` disables it |
+| `THREADKEEPER_WORKFLOW_RETENTION_COUNT` | 100 | newest terminal Curator/Evolve artifacts protected by count; `0` disables it |
 | `THREADKEEPER_MEMORY_EGRESS` | `all` | personal-class memory egress scope: `all` / `same-vendor` / `work-only` (see Spawn → Cross-provider memory egress) |
 | `THREADKEEPER_EMBED_MODEL` | paraphrase-multilingual-MiniLM-L12-v2 | 384-dim, RU+EN |
 | `THREADKEEPER_EMBED_BACKEND` | `onnx` | `onnx` (fastembed, no PyTorch) or `sentence-transformers` (fallback) |

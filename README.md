@@ -834,7 +834,11 @@ a recoverable snapshot under
 `~/.threadkeeper/curator/snapshots/<pass-id>/`). The snapshot contains
 `lessons.md`, copied in-scope skill dirs, a `manifest.json`, and per-action
 tombstones for curator prunes/deletes. Retention is bounded by
-`THREADKEEPER_CURATOR_SNAPSHOT_RETENTION` (default 10, current pass always kept).
+`THREADKEEPER_CURATOR_SNAPSHOT_RETENTION` (default 10) for legacy/direct
+snapshots. Daemon-owned snapshots instead follow the coordinated workflow
+retention policy, so their pass, report, manifest, and recovery archive cannot
+age out on different schedules; active work and an endorsed report that has not
+been applied always keep recovery material.
 Use `curator_restore(pass_id, lesson_slug="...")` or
 `curator_restore(pass_id, skill_name="...")` to restore an item from a snapshot.
 As a prevention layer before recovery is needed, a destructive Curator pass
@@ -971,15 +975,27 @@ with that name instead of minting overlapping roadmap PRs.
 
 The Evolve applier is the downstream implementer. `evolve_apply_roadmap_issue()`
 picks one open GitHub issue at a time (`roadmap` label first, then FIFO), but
-the automatic pass first scans already-open same-repo applier PRs for GitHub
-merge conflicts. A conflicted `roadmap/…` or `evolve/…` PR is repaired before
-any new issue/report/evolve work is started; if the PR sweep itself cannot read
-GitHub state, the pass fails closed instead of taking fresh work blind. The
-conflict-repair child checks out the existing PR branch, merges the current
-base branch, resolves conflicts, runs the full suite, and pushes back to the
-same branch. It then waits for GitHub checks on the pushed PR head and runs
-`gh pr merge --squash --delete-branch`, so GitHub lands the repaired PR into
-`main` through branch protection rather than a raw local `git push origin main`.
+the automatic pass first sweeps the open PRs authored by the account
+thread-keeper's `gh` acts as — yours: applier, reviewer, and hand-made PRs
+alike. A PR from any other account (a collaborator, a bot, a fork) is never
+updated, repaired, or merged. If the PR sweep itself cannot read GitHub state
+or the `gh` account, the pass fails closed instead of taking fresh work blind.
+The sweep squash-merges the oldest non-draft PR GitHub reports `CLEAN` (up to
+date, required checks green) through the protected merge API, pinned to the
+head SHA it saw green, and then asks GitHub to update the oldest `BEHIND` one —
+the "Update branch" button — so CI reruns against the new base. Open
+work in progress as a draft: drafts are never merged. Strict branch
+protection lets only one PR merge per base commit, so PRs land one at a time,
+oldest first. Between full passes the daemon repeats only this cheap landing
+sweep every 15 minutes, so a green PR lands minutes after its checks finish;
+it skips while any reviewer/applier git writer runs. A conflicted applier PR
+(`roadmap/…` or `evolve/…` head branch in this repository) is repaired before
+any new issue/report/evolve work is started: the conflict-repair child checks
+out the existing PR branch, merges the current base branch, resolves
+conflicts, runs the full suite, and pushes back to the same branch, then
+stops; the landing sweep merges it once it is green. A hand-made PR with
+conflicts, and red or otherwise blocked PRs, wait for a human. Set
+`THREADKEEPER_EVOLVE_AUTOLAND=0` to leave every merge to a human.
 The roadmap issue child skips issues carrying denylisted human-gate labels,
 skips issues with an active Evolve claim comment, posts its own claim comment
 before spawning, and advances to the next issue when an issue-local dispatch
@@ -1014,9 +1030,13 @@ task’s tree. This prevents unrelated unfinished tests from blocking every PR
 repair. Ignored files (including `.venv`) and explicit operator checkouts stay
 in place; live writers prevent recovery, and backup failures block dispatch.
 Each managed-checkout child fetches the
-configured branch only to retrieve the configured immutable commit, then
-prepares or resumes its deterministic local/remote feature branch from
-`THREADKEEPER_EVOLVE_REPO_COMMIT`, never from the branch's moving tip. Retries
+configured branch, prepares or resumes its deterministic local/remote feature
+branch from the freshly fetched `origin/<THREADKEEPER_EVOLVE_REPO_BRANCH>` tip,
+rebases onto it, and re-syncs the managed venv to that branch's declared
+dependencies. `THREADKEEPER_EVOLVE_REPO_COMMIT` bounds only what the parent
+provisions and parks the checkout at; it is never a branch base, because a base
+that never moves cut every applier PR from one stale commit and each PR was
+born conflicted with `main`. Retries
 therefore validate prior branch work instead of discovering a branch-name
 collision after changing the base checkout. A shared git-writer running-task
 check prevents the privileged reviewer audit and code/PR applier from
@@ -1316,6 +1336,8 @@ The most-used env knobs (full list in `threadkeeper/config.py`):
 | `THREADKEEPER_PROBE_RESULT_RETENTION_DAYS` | 0 | prune old `probe_results` and refresh reliability aggregates; 0 keeps forever |
 | `THREADKEEPER_RETENTION_WAL_CHECKPOINT` | false | run `PRAGMA wal_checkpoint(TRUNCATE)` during retention passes |
 | `THREADKEEPER_RETENTION_VACUUM_AFTER_ROWS` | 0 | run `VACUUM` after a pass deletes at least this many rows; 0 disables VACUUM |
+| `THREADKEEPER_WORKFLOW_RETENTION_DAYS` | 30 | age protection for terminal Curator passes and consumed Evolve research handoffs; `0` disables the age bound |
+| `THREADKEEPER_WORKFLOW_RETENTION_COUNT` | 100 | newest terminal Curator passes and research handoffs protected by count; `0` disables the count bound |
 | `THREADKEEPER_MEMORY_EGRESS` | `all` | cross-provider scope for personal-class memory (verbatim quotes + dialectic user-model) in `brief()`. `all` = current behavior, egress to whichever vendor backs the consuming CLI. `same-vendor` = personal renders only for Claude/Anthropic, omitted for OpenAI/Google/Microsoft CLIs. `work-only` = personal never rendered, any vendor. See [Memory egress](#memory-egress-cross-provider-privacy) |
 | `THREADKEEPER_OTEL_ENABLED` | false | enable privacy-safe OTLP tracing only when an endpoint is also configured |
 | `THREADKEEPER_OTEL_ENDPOINT` | "" | OTLP/HTTP collector trace endpoint, normally `https://collector.example/v1/traces` |
@@ -1404,6 +1426,7 @@ The most-used env knobs (full list in `threadkeeper/config.py`):
 | `THREADKEEPER_EVOLVE_REVIEW_INTERVAL_S` | 0 (off) | evolve-reviewer daemon tick (s); audits thread-keeper for safety/leaks/optimization/new ideas, updates roadmap/issues, and includes legacy evolve suggestions as input. Runs as two alternating phases — read-only web research, then a privileged web-free audit that consumes the fenced research digest (#79) — so a full cycle spans two ticks |
 | `THREADKEEPER_EVOLVE_REVIEW_BACKLOG_MAX` | 25 | max open, not-yet-applied `roadmap`-label issues before the issue-creating audit is skipped and records `backlog_saturated`; skip-labelled and untrusted-author roadmap issues still count; `0` disables the cap |
 | `THREADKEEPER_EVOLVE_APPLY_INTERVAL_S` | 0 (off) | evolve-applier daemon tick (s); implements one open GitHub issue at a time, then falls back to Curator reports and promoted legacy evolve suggestions. Empty checks are throttled between intervals; actionable work and manual apply tools still dispatch |
+| `THREADKEEPER_EVOLVE_AUTOLAND` | true | land open non-draft PRs authored by the account `gh` acts as: squash-merge one once GitHub reports it up to date with required checks green, and update one that fell behind the base. Other accounts' PRs are never touched. `0`/`false` leaves every merge to a human |
 | `THREADKEEPER_EVOLVE_REPO_ROOT` | (auto) | absolute path to the thread-keeper git checkout the evolve reviewer/applier branch, test, and open PRs against. When empty, the repo is resolved automatically: the package's parent dir for an editable `install.sh`, else a managed checkout under the DB dir that is auto-cloned on first use. Set this to pin an explicit checkout |
 | `THREADKEEPER_EVOLVE_AUTO_CLONE` | true | auto-provision a managed checkout that runs remote `pip install -e` and tests; set `0`/`false` on shared or multi-user hosts unless that remote-code-execution boundary is explicitly accepted |
 | `THREADKEEPER_EVOLVE_REPO_URL` | upstream repo | HTTPS `github.com` source for the managed clone; restart-only, and other hosts/schemes are refused |
@@ -1704,6 +1727,19 @@ keeps `dialog_fts`, `dialog_vec`, and `dialog_vec_map` consistent with
 the high-volume tables (`dialog_messages`, `dialog_fts`, `dialog_vec`,
 `signals`, `events`, `tasks`, `probe_results`) so growth is visible before it
 becomes a problem.
+
+Terminal Curator passes own their frozen batch text, `REPORT-*`, `AUDIT-*`, and
+destructive snapshot; Evolve handoffs own their `RESEARCH-*` digest. The
+retention daemon keeps active/retryable work, recovery material, and endorsed
+but unapplied reports. After both enabled workflow bounds expire, it first
+compacts batch/research bodies to a SHA-256 plus a 512-character summary and
+removes only owned files. A later pass removes the compacted rows. File removal
+is path-contained to the configured Curator or Evolve directory, rejects
+symlinks, and is journaled so an interrupted delete retries safely. Use
+`workflow_retention_preview()` for the dry-run counts/bytes and oldest terminal
+pass; `mp_dashboard()` shows its latest outcome. A selective `forget()` that
+matches a frozen workflow body compacts it immediately, including active work;
+the normal report/lesson review guidance still applies to generalized content.
 
 `db_compact()` is the opt-in disk-reclaim tool: `VACUUM` + a mandatory
 `dialog_fts` rebuild (schema v2 keys the FTS index on `dialog_messages`
@@ -2038,7 +2074,9 @@ threadkeeper/
 so `tools/list` carries MCP 2025-06-18 `ToolAnnotations` for every
 registered tool: `readOnlyHint=True` for pure reads (`brief`, `context`, `search`,
 `dialog_search`, the status tools, …) and `readOnlyHint=False`
-for mutations. `lesson_list` / `lesson_get` are classified as non-destructive
+for mutations. Advertised reads use query-only database connections and never
+bootstrap a session, start daemon work, refresh process data, or mutate
+lifecycle state. `lesson_list` / `lesson_get` are classified as non-destructive
 writes because they bump lesson access counters. Delete/overwrite/kill tools
 carry `destructiveHint=True` (`compost` is read-only — it only surfaces idle
 threads). A confirmation/elicitation host reads this to decide which calls

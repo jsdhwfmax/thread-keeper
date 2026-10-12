@@ -15,7 +15,7 @@ from typing import Any
 
 from .config import TASK_LOG_DIR
 from .task_spool import open_spool_binary_read
-from .db import get_db
+from .db import get_db, read_db
 from .github_budget import format_github_budget, github_budget_state
 from .github_safety import sanitize_presentation_text
 from .helpers import alive, fmt_age
@@ -297,7 +297,7 @@ for _loop_def in _LOOP_DEFS:
 _RESULT_WINDOW_S = 3600
 _RESULT_SUMMARY_LIMIT = 240
 _ISSUE_BACKLOG_CACHE: dict[str, int] = {"at": 0, "count": 0}
-_CONFLICTED_PR_CACHE: dict[str, int] = {"at": 0, "count": 0}
+_APPLIER_PR_CACHE: dict[str, int] = {"at": 0, "count": 0}
 
 
 def _detect_role(prompt: str) -> str:
@@ -446,27 +446,29 @@ def _roadmap_issue_apply_count(conn, now: int) -> int:
     return len(issues)
 
 
-def _conflicted_pr_apply_count(now: int) -> int:
-    if now - _CONFLICTED_PR_CACHE["at"] < 300:
-        return _CONFLICTED_PR_CACHE["count"]
+def _applier_pr_apply_count(now: int) -> int:
+    """Open applier PRs the applier will act on: repair, update, or merge."""
+    if now - _APPLIER_PR_CACHE["at"] < 300:
+        return _APPLIER_PR_CACHE["count"]
     try:
-        from .evolve_applier import _conflicted_applier_prs
+        from .evolve_applier import _applier_pr_queue
 
-        prs, err = _conflicted_applier_prs()
+        queue, err = _applier_pr_queue()
     except Exception:
-        return _CONFLICTED_PR_CACHE["count"]
+        return _APPLIER_PR_CACHE["count"]
     if err:
-        return _CONFLICTED_PR_CACHE["count"]
-    _CONFLICTED_PR_CACHE["at"] = int(now)
-    _CONFLICTED_PR_CACHE["count"] = len(prs)
-    return len(prs)
+        return _APPLIER_PR_CACHE["count"]
+    count = sum(1 for action, _pr in queue if action != "wait")
+    _APPLIER_PR_CACHE["at"] = int(now)
+    _APPLIER_PR_CACHE["count"] = count
+    return count
 
 
 def _backlog_count(conn, loop: dict[str, Any], now: int) -> int:
     if loop.get("backlog_metric") == "probe_due":
         return _probe_due_count(conn, now)
     if loop.get("backlog_metric") == "evolve_apply":
-        return _conflicted_pr_apply_count(now) + _scalar(
+        return _applier_pr_apply_count(now) + _scalar(
             conn,
             "SELECT COUNT(*) FROM evolve WHERE applied=0 "
             "AND COALESCE(status,'pending')='promoted'",
@@ -1187,18 +1189,14 @@ def format_memory_cleanup(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def agent_status_snapshot(refresh: bool = True, limit: int = 50) -> dict[str, Any]:
-    """Return a JSON-ready snapshot of autonomous loops and running children."""
-    conn = get_db()
-    if refresh:
-        _refresh_rss(conn)
-    now = int(time.time())
+def _agent_status_snapshot(conn, now: int, limit: int, *, freshness: str) -> dict[str, Any]:
     agents = _running_agents(conn, now, limit)
     loops = _loop_statuses(conn, agents, now)
     github_budget = github_budget_state(conn, now_t=now)
 
     return {
         "generated_at": now,
+        "rss_freshness": freshness,
         "running_count": len(agents),
         "total_rss_kb": sum(a["rss_kb"] for a in agents),
         "total_rss_mb": sum(a["rss_mb"] for a in agents),
@@ -1214,6 +1212,24 @@ def agent_status_snapshot(refresh: bool = True, limit: int = 50) -> dict[str, An
     }
 
 
+def agent_status_snapshot(refresh: bool = False, limit: int = 50) -> dict[str, Any]:
+    """Return a JSON-ready snapshot of autonomous loops and running children.
+
+    ``refresh=True`` is for explicit write callers (the CLI and refresh tool).
+    Observational callers receive only the last persisted RSS/lifecycle cache.
+    """
+    now = int(time.time())
+    if refresh:
+        conn = get_db()
+        try:
+            _refresh_rss(conn)
+            return _agent_status_snapshot(conn, now, limit, freshness="refreshed")
+        finally:
+            conn.close()
+    with read_db() as conn:
+        return _agent_status_snapshot(conn, now, limit, freshness="cached")
+
+
 def format_agent_status(snapshot: dict[str, Any]) -> str:
     timed_out = snapshot.get("timed_out_count", 0)
     timed_out_disp = f" timed_out={timed_out}" if timed_out else ""
@@ -1221,7 +1237,8 @@ def format_agent_status(snapshot: dict[str, Any]) -> str:
         f"loops enabled={snapshot.get('enabled_loop_count', 0)} "
         f"running={snapshot.get('running_loop_count', 0)} "
         f"ready={snapshot.get('ready_loop_count', 0)} "
-        f"child_rss={snapshot['total_rss_mb']}MB{timed_out_disp} "
+        f"child_rss={snapshot['total_rss_mb']}MB "
+        f"rss_freshness={snapshot.get('rss_freshness', 'cached')}{timed_out_disp} "
         f"{format_github_budget(snapshot.get('github_budget') or {})}"
     ]
     for loop in snapshot.get("loops", []):
