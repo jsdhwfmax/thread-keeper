@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: privacy-bounded Curator web research (#355).** Curator evaluators
+  retain their local audit coverage but have no web tools. External lookup is
+  disabled by default; explicit operator consent starts a separate Claude-only
+  researcher with fixed public compatibility queries, no local memory or
+  repository reads, and one parent-authorized handoff writer. Foreground,
+  private, and unclassified entries use the offline `HUMAN_REVIEW` path.
+
 - **Added: bounded durable workflow artifacts (#349).** Terminal Curator
   passes and consumed Evolve research handoffs follow configurable age/count
   retention. Expired frozen bodies compact to a hash and bounded summary before

@@ -663,6 +663,7 @@ def _spawn_impl(prompt: str, cwd: str = "", append_system: str = "",
                 model: str = "", effort: str = "",
                 permission_mode: str = "auto",
                 extra_allowed_tools: str = "",
+                base_allowed_tools: str | None = None,
                 capture_output: bool = True,
                 visible: bool = True,
                 role: str = "",
@@ -910,8 +911,12 @@ def _spawn_impl(prompt: str, cwd: str = "", append_system: str = "",
     child_allowed_tools = (
         list(allowed_tools_override)
         if allowed_tools_override is not None
-        else list(_CHILD_DEFAULT_ALLOWED_TOOLS)
-    ) + [t.strip() for t in extra_allowed_tools.split(",") if t.strip()]
+        else (
+            [tool.strip() for tool in base_allowed_tools.split(",") if tool.strip()]
+            if base_allowed_tools is not None
+            else list(_CHILD_DEFAULT_ALLOWED_TOOLS)
+        )
+    ) + [tool.strip() for tool in extra_allowed_tools.split(",") if tool.strip()]
     if chosen_cli != "claude":
         from ..adapters import get_adapter
         _ad = get_adapter(chosen_cli)
@@ -1328,6 +1333,7 @@ def spawn(prompt: str, cwd: str = "", append_system: str = "",
           model: str = "", effort: str = "",
           permission_mode: str = "auto",
           extra_allowed_tools: str = "",
+          base_allowed_tools: str | None = None,
           capture_output: bool = True,
           visible: bool = True,
           role: str = "",
@@ -1349,6 +1355,7 @@ def spawn(prompt: str, cwd: str = "", append_system: str = "",
         effort=effort,
         permission_mode=permission_mode,
         extra_allowed_tools=extra_allowed_tools,
+        base_allowed_tools=base_allowed_tools,
         capture_output=capture_output,
         visible=visible,
         role=role,

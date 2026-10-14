@@ -727,12 +727,13 @@ inventory and `curator_review_status()` report emitted/rejected counts and
 rejection reasons, so the rule can be tuned from production data. A
 non-protected candidate must become one validated, checklist-style canonical
 skill before its source lessons are retired; protected clusters are left for
-human review. A read-only research child reads every
-complete skill and relevant support file, performs current web research against
-official docs and comparable public skills, then writes a bounded
-`RESEARCH-<pass>-batch-NNN-of-MMM.json` handoff through a destination-scoped
-tool. A separate web-free evaluator receives that handoff as fenced, untrusted
-data and writes numbered per-skill verdicts to
+human review. The evaluator reads every complete skill and relevant support
+file, but has no web tools. External research is off by default. With explicit
+`THREADKEEPER_CURATOR_WEB_RESEARCH=1`, a separate Claude-only researcher gets
+only fixed public compatibility queries, `WebSearch`, `WebFetch`, and one
+parent-authorized handoff writer; it cannot read local memory or the
+repository. The evaluator receives that handoff as fenced, untrusted data and
+writes numbered per-skill verdicts to
 `~/.threadkeeper/curator/REPORT-<isodate>.md` for a one-batch pass or
 `REPORT-<isodate>-batch-NNN-of-MMM.md` for a multi-batch pass: KEEP / REPAIR /
 UPDATE / MERGE / SPLIT / DEPRECATE / DELETE / CROSS_LINK / HUMAN_REVIEW.
@@ -1369,7 +1370,7 @@ The most-used env knobs (full list in `threadkeeper/config.py`):
 | `THREADKEEPER_CURATOR_INTERVAL_S` | 259200 | deep curator audit every three days; set `0` to disable |
 | `THREADKEEPER_CURATOR_MANAGE_FOREGROUND_SKILLS` | 0 | allow snapshot-scoped Curator repair/merge/delete of foreground skills; pinned/untracked skills remain protected |
 | `THREADKEEPER_CURATOR_MIN_LESSONS` | 3 | min lessons before curator engages |
-| `THREADKEEPER_CURATOR_WEB_RESEARCH` | `1` (on) | run a read-only web research child per batch before the web-free evaluator; `0` skips research (the evaluator uses local evidence only) |
+| `THREADKEEPER_CURATOR_WEB_RESEARCH` | `0` (off) | explicit consent for the isolated Curator web researcher; it receives only fixed public compatibility queries, while foreground/private/unclassified entries use `HUMAN_REVIEW` |
 | `THREADKEEPER_CURATOR_DESTRUCTIVE` | `1` (on) | curator child writes its REPORT then applies its own PATCH/PRUNE/CONSOLIDATE directly (incl. `lesson_remove` for prune/consolidate); set `0` for advisory REPORT-only. `[PROTECTED]` entries are refused server-side |
 | `THREADKEEPER_CURATOR_MAX_DESTRUCTIVE_PER_PASS` | 10 | shared server-side ceiling for one destructive Curator pass across `lesson_remove` and `skill_manage(action='delete')`; `0` disables autonomous deletes and foreground deletes bypass it |
 | `THREADKEEPER_CURATOR_SNAPSHOT_RETENTION` | 10 | number of destructive curator pre-mutation snapshots to retain under `<reports_dir>/snapshots`; current pass is always retained |

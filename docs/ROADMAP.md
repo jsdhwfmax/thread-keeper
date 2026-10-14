@@ -477,10 +477,15 @@ Scope: ongoing.
 **Curator policy tuning.** ✅ DONE — now a three-day deep audit rather than the
 old telemetry-only archive heuristic. A deterministic parent phase inventories
 every tracked/materialized skill and validates CLI compatibility, resources,
-links, mirrors, exact duplicates, and semantic candidates. The child reads
-every full skill, performs current official-doc/comparable-skill web research,
-records numbered KEEP / REPAIR / UPDATE / MERGE / SPLIT / DEPRECATE / DELETE /
-CROSS_LINK / HUMAN_REVIEW verdicts, and revalidates after applying changes.
+links, mirrors, exact duplicates, and semantic candidates. The evaluator reads
+every full skill but has no web tools. External lookup requires explicit
+`THREADKEEPER_CURATOR_WEB_RESEARCH=1` consent and runs in a separate Claude-only
+researcher with fixed public compatibility queries, no local-memory or
+repository reads, and one parent-authorized handoff writer. Foreground, private,
+and unclassified inventory stays offline with `HUMAN_REVIEW`; only aggregate
+reason counts are recorded. The evaluator records numbered KEEP / REPAIR /
+UPDATE / MERGE / SPLIT / DEPRECATE / DELETE / CROSS_LINK / HUMAN_REVIEW verdicts
+and revalidates after applying changes.
 `REPORT-<isodate>.md` and `AUDIT-<isodate>.json` provide the audit trail.
 `[PROTECTED]` entries are refused server-side unless the explicit, snapshot-
 scoped foreground-skill authority is enabled:

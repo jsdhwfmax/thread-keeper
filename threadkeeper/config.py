@@ -399,6 +399,10 @@ class Settings(BaseSettings):
     # merge, or delete foreground-authored skills. Off by default globally;
     # users who want full autonomous consolidation opt in deliberately.
     curator_manage_foreground_skills: bool = False
+    # External web research never receives Curator inventory by default. Set
+    # this explicit operator consent to allow a separate, brief-only web
+    # researcher to look up the fixed public compatibility topics.
+    curator_web_research: bool = False
     # Keep the last N destructive curator snapshots under
     # CURATOR_REPORTS_DIR/snapshots. The current pass is always retained, so
     # values below 1 behave as 1.
@@ -424,11 +428,6 @@ class Settings(BaseSettings):
     # and refill only failed/missing batch slots instead of waiting a full
     # curator interval. The normal interval applies again once it is endorsed.
     curator_batch_poll_s: float = Field(default=60.0, ge=1.0)
-    # Web research runs in a separate read-only child per batch before the
-    # web-free evaluator (#289). Disable to skip it (and its token cost); the
-    # evaluator then judges currency from local evidence only.
-    curator_web_research: bool = True
-
     # ── Extract daemon ───────────────────────────────────────────────────────
     extract_interval_s: float = 0.0
     extract_window_min: int = 30
@@ -939,6 +938,7 @@ def _derive_constants(s: "Settings") -> dict:
         "CURATOR_REPORTS_DIR": curator_reports_dir,
         "CURATOR_DESTRUCTIVE": s.curator_destructive,
         "CURATOR_MANAGE_FOREGROUND_SKILLS": s.curator_manage_foreground_skills,
+        "CURATOR_WEB_RESEARCH": s.curator_web_research,
         "CURATOR_SNAPSHOT_RETENTION": s.curator_snapshot_retention,
         "CURATOR_TRASH_DIR": curator_reports_dir / "trash",
         "CURATOR_TRASH_TTL_DAYS": s.curator_trash_ttl_days,
@@ -949,7 +949,6 @@ def _derive_constants(s: "Settings") -> dict:
         "WORKFLOW_RETENTION_COUNT": s.workflow_retention_count,
         "CURATOR_MAX_CONCURRENT_BATCHES": s.curator_max_concurrent_batches,
         "CURATOR_BATCH_POLL_S": s.curator_batch_poll_s,
-        "CURATOR_WEB_RESEARCH": bool(s.curator_web_research),
         "EXTRACT_INTERVAL_S": s.extract_interval_s,
         "EXTRACT_WINDOW_MIN": s.extract_window_min,
         "CANDIDATE_REVIEW_INTERVAL_S": s.candidate_review_interval_s,
