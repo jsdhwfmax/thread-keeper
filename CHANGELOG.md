@@ -98,6 +98,24 @@ version bumps follow semver per the policy in
   capped at discovery time. `last_patched_at` continues to record the edit
   signal used by the watcher.
 
+## v0.17.0 — 2026-10-15
+
+### Added
+
+- **Role-scoped MCP tool profiles and deferred discovery (#353).** Servers now
+  apply `core`, `coordination`, `memory-admin`, `learning-loops`, or `full`
+  before advertising `tools/list`. Exact include/exclude overrides fail closed,
+  child profiles are intersected with the parent surface, and
+  `capability_search` returns bounded read-only family metadata without
+  revealing or enabling hidden tools. New setup registrations start at `core`;
+  unconfigured existing registrations retain `full` compatibility.
+
+### Changed
+
+- **MCP SDK 1.x and 2.x are both supported.** The registry, elicitation, and
+  dialectic context imports select the SDK's FastMCP/MCPServer names at runtime,
+  and the package no longer caps MCP below 2.0.
+
 ## v0.16.3 — 2026-07-19
 
 ### Changed

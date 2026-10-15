@@ -1444,7 +1444,32 @@ FTS AND query retries as a BM25-ranked OR query. `search()`,
 `dialog_search()`, and `brief(query=...)` use this engine, so semantic
 availability can no longer disable lexical recall for partially embedded data.
 
-## MCP tools (120 total)
+## MCP tools (127 in the full profile)
+
+`server.py` imports every tool module into one FastMCP/MCPServer instance, then
+`_mcp.configure_tool_profile()` removes entries before the SDK can answer
+`tools/list`. `THREADKEEPER_TOOL_PROFILE` selects `core`, `coordination`,
+`memory-admin`, `learning-loops`, or `full` (the compatibility default).
+`THREADKEEPER_TOOL_INCLUDE` and `THREADKEEPER_TOOL_EXCLUDE` accept only exact
+registered names; unknown or conflicting values fail server startup. The
+optional internal parent allowlist is intersected last, so spawned children
+cannot widen their parent's surface even if their role requests a broader
+profile. Removal from the SDK registry means hidden calls are rejected as
+unknown rather than merely concealed from a client UI.
+
+`core` is the daily-memory boundary: session start (`brief`/`context`), thread
+and note workflow, search, and peer coordination. It excludes Evolve, Curator,
+sync, probes, and destructive maintenance. New setup-generated MCP entries use
+`core`; an existing entry with no profile continues to receive `full`.
+
+All narrowed profiles expose read-only `capability_search(query)`. It returns
+at most six `{family, summary, profile}` records for hidden families and never
+returns concrete hidden tool names or changes the registry. This supplies a
+safe fallback for MCP hosts without native deferred tool discovery.
+
+The registry compatibility shim imports `FastMCP` on MCP SDK 1.x and
+`MCPServer` on SDK 2.x. Both expose the same tool-manager removal boundary used
+above; annotation tests normalize the SDKs' camelCase/snake_case model fields.
 
 Compact grouping by module. Full signatures are in the code; `_mcp.py`
 auto-generates JSON-Schema from annotations. Every tool also carries an

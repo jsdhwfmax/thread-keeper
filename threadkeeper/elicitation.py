@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context
+try:  # MCP 1.x
+    from mcp.server.fastmcp import Context
+except ModuleNotFoundError:  # MCP 2.x
+    from mcp.server.mcpserver import Context
 from pydantic import BaseModel, Field
 
 

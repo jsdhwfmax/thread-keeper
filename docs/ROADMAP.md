@@ -14,6 +14,13 @@ remains a live question.
   `task_logs`, `task_kill`).
 - Slim children by default: `NO_EMBEDDINGS=1`, no third-party MCP, ~500MB
   RSS instead of ~1.3GB.
+- Role-scoped MCP tool profiles (#353): server-side `core`, `coordination`,
+  `memory-admin`, `learning-loops`, and compatibility `full` are applied before
+  `tools/list`, with exact include/exclude validation and hidden-call rejection.
+  Setup now chooses `core`; existing unconfigured entries remain `full`.
+  Spawned children receive an intersection with their parent's resolved tool
+  set, and read-only `capability_search` provides bounded family metadata for
+  hosts without native deferred tool discovery.
 - Search proxy in parent process — slim child performs semantic search
   via `search_via_parent`.
 - Spawn budget daemon: RSS accounting of child processes every 10s,

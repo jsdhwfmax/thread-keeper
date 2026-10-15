@@ -65,7 +65,10 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from mcp.server.fastmcp import Context
+try:  # MCP 1.x
+    from mcp.server.fastmcp import Context
+except ModuleNotFoundError:  # MCP 2.x
+    from mcp.server.mcpserver import Context
 
 from .._mcp import read_tool, write_tool
 from ..config import WRITE_ORIGIN

@@ -14,11 +14,42 @@ writes without calling them:
 This static metadata layer is what a confirmation/elicitation client reads
 to decide which calls warrant a prompt (roadmap #67; substrate for #26).
 """
-from mcp.server.fastmcp import FastMCP
+try:  # MCP 1.x
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:  # MCP 2.x renamed FastMCP to MCPServer.
+    from mcp.server.mcpserver import MCPServer as FastMCP
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 
+from .tool_profiles import environment_selection
+
 mcp = FastMCP("thread-keeper")
+_active_tool_names: frozenset[str] = frozenset()
+
+
+def active_tool_names() -> frozenset[str]:
+    """Return the tools actually exposed by this server instance."""
+    return _active_tool_names or frozenset(mcp._tool_manager._tools)
+
+
+def configure_tool_profile() -> frozenset[str]:
+    """Remove tools outside the configured profile before ``tools/list`` runs."""
+    global _active_tool_names
+    from .config import settings
+
+    registered = frozenset(mcp._tool_manager._tools)
+    selected = environment_selection(
+        registered,
+        profile=settings.tool_profile,
+        include=settings.tool_include,
+        exclude=settings.tool_exclude,
+        parent_allowlist=settings.tool_parent_allowlist or None,
+    )
+    remove_tool = getattr(mcp, "remove_tool", mcp._tool_manager.remove_tool)
+    for name in registered - selected:
+        remove_tool(name)
+    _active_tool_names = selected
+    return selected
 
 
 def read_tool(**kwargs):

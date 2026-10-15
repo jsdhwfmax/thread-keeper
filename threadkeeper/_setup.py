@@ -128,7 +128,12 @@ def install_mcp_servers(dry_run: bool) -> list[str]:
     if venv_python.exists():
         python_bin = str(venv_python)
     args = ["-m", "threadkeeper.server"]
-    env = {"PYTHONPATH": str(REPO_ROOT)}
+    # New installations begin with the daily-agent surface. Existing installs
+    # keep their full catalog until setup is run again or the profile is set.
+    env = {
+        "PYTHONPATH": str(REPO_ROOT),
+        "THREADKEEPER_TOOL_PROFILE": "core",
+    }
 
     lines: list[str] = []
     adapters = installed_adapters()

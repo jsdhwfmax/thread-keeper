@@ -544,6 +544,26 @@ def _spawn_impl(prompt: str, cwd: str = "", append_system: str = "",
         "THREADKEEPER_SPAWNED_CHILD": "1",
         "THREADKEEPER_TZ": os.environ.get("THREADKEEPER_TZ", "UTC"),
     }
+    from .._mcp import active_tool_names
+    from ..tool_profiles import (
+        CHILD_TOOL_PROFILE_ENV,
+        TOOL_EXCLUDE_ENV,
+        TOOL_INCLUDE_ENV,
+        TOOL_PARENT_ALLOWLIST_ENV,
+        TOOL_PROFILE_ENV,
+        child_profile_environment,
+    )
+    from ..config import settings
+    configured_child_profile = (
+        child_env.get(CHILD_TOOL_PROFILE_ENV, "")
+        or settings.child_tool_profile
+    )
+    child_env.pop(TOOL_INCLUDE_ENV, None)
+    child_env.pop(TOOL_EXCLUDE_ENV, None)
+    child_env.pop(TOOL_PARENT_ALLOWLIST_ENV, None)
+    child_env.update(child_profile_environment(
+        active_tool_names(), role, configured_child_profile,
+    ))
     if "THREADKEEPER_ENV_FILE" in os.environ:
         child_env["THREADKEEPER_ENV_FILE"] = os.environ["THREADKEEPER_ENV_FILE"]
     if write_origin:
@@ -591,6 +611,8 @@ def _spawn_impl(prompt: str, cwd: str = "", append_system: str = "",
             "THREADKEEPER_TZ",
             "THREADKEEPER_WRITE_ORIGIN",
             "THREADKEEPER_NO_EMBEDDINGS",
+            "THREADKEEPER_TOOL_PROFILE",
+            "THREADKEEPER_TOOL_PARENT_ALLOWLIST",
             "THREADKEEPER_CURATOR_PASS_ID",
             "THREADKEEPER_CURATOR_SNAPSHOT_DIR",
         )

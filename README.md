@@ -1090,8 +1090,45 @@ Adding a new language is a two-file PR — see [CONTRIBUTING.md](CONTRIBUTING.md
 
 The most-used env knobs (full list in `threadkeeper/config.py`):
 
+### MCP tool profiles
+
+The server can advertise a role-sized MCP tool surface instead of its full
+catalog. Set `THREADKEEPER_TOOL_PROFILE` before server startup, then restart
+the host after changing it:
+
+| Profile | Intended surface |
+| --- | --- |
+| `core` | daily session memory: `brief`, `context`, threads, notes, search, and peer coordination |
+| `coordination` | `core` plus child spawning, task status, pickup, and delegated search |
+| `memory-admin` | `core` plus durable memory, concepts, lessons, graph links, and explicit erasure |
+| `learning-loops` | `core` plus extraction, validation, skills, Curator, probes, and dialectic workflows |
+| `full` | every registered tool; the compatibility default when no profile is configured |
+
+New `thread-keeper-setup` registrations use `core`. Existing server entries
+without the setting retain `full` until you opt in. Add exact, comma-separated
+tool names with `THREADKEEPER_TOOL_INCLUDE`, or remove names with
+`THREADKEEPER_TOOL_EXCLUDE`; unknown names and contradictory overrides stop the
+server rather than exposing an unintended surface.
+
+Spawned children default to `core`; archival, Curator, candidate-review,
+shadow-review, probe-runner, and dialectic-validator roles use
+`learning-loops`, while Evolve roles request `full`. The server receives the
+parent’s resolved allowlist and intersects it with the child profile, so a
+child cannot regain a tool its parent did not expose.
+`THREADKEEPER_CHILD_TOOL_PROFILE` explicitly selects a different child profile,
+still under that parent constraint.
+
+Every non-full profile includes read-only `capability_search(query)`. It returns
+at most six matching capability *families* with a summary and the profile that
+would expose them. It does not list hidden concrete tools or enable any action;
+use it as the fallback on hosts that lack native deferred tool discovery.
+
 | Knob | Default | Purpose |
 |---|---|---|
+| `THREADKEEPER_TOOL_PROFILE` | `full` | MCP registry profile: `core`, `coordination`, `memory-admin`, `learning-loops`, or `full`; read at server start |
+| `THREADKEEPER_TOOL_INCLUDE` | "" | exact comma-separated tool names to add to the selected profile; unknown names fail closed |
+| `THREADKEEPER_TOOL_EXCLUDE` | "" | exact comma-separated tool names to remove from the selected profile; unknown or overlapping names fail closed |
+| `THREADKEEPER_CHILD_TOOL_PROFILE` | role default | spawned-child profile override; always intersected with the parent’s resolved tool surface |
 | `THREADKEEPER_DB` | `~/.threadkeeper/db.sqlite` | SQLite file |
 | `THREADKEEPER_TASK_LOG_DIR` | `~/.threadkeeper/tasks` | owner-only task spool for spawn logs, stdin prompts, command scripts, and small runtime logs |
 | `THREADKEEPER_RETENTION_INTERVAL_S` | 0 (off) | SQLite retention/compaction daemon tick; 0 disables the daemon |

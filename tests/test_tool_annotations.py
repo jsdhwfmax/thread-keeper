@@ -24,7 +24,7 @@ import pytest
 
 # --- read-only tools: pure queries, no state mutation ------------------------
 READ_TOOLS = {
-    "agent_status", "brief", "candidate_review_status", "compost",
+    "agent_status", "brief", "capability_search", "candidate_review_status", "compost",
     "config_watch_status", "context", "core_get", "core_list",
     "curator_review_status", "dialectic_mine_status", "dialectic_review",
     "dialectic_synthesis", "dialectic_validate_status", "dialog_search",
@@ -83,6 +83,15 @@ def _tools(pkg):
     return {t.name: t for t in pkg["mcp"]._tool_manager.list_tools()}
 
 
+def _annotation(annotation, camel: str, snake: str):
+    """MCP SDK 1.x uses camelCase attrs; SDK 2.x uses snake_case attrs."""
+    return getattr(annotation, camel, getattr(annotation, snake, None))
+
+
+def _structured_content(result):
+    return getattr(result, "structuredContent", getattr(result, "structured_content", None))
+
+
 def test_every_tool_is_classified(fresh_mp):
     """A new tool that is not added to one of the curated sets fails here,
     forcing an explicit read/write decision."""
@@ -97,7 +106,7 @@ def test_every_tool_has_explicit_read_write_hint(fresh_mp):
     tools = _tools(fresh_mp)
     missing = [
         n for n, t in tools.items()
-        if t.annotations is None or t.annotations.readOnlyHint is None
+        if t.annotations is None or _annotation(t.annotations, "readOnlyHint", "read_only_hint") is None
     ]
     assert not missing, f"tools missing explicit readOnlyHint: {sorted(missing)}"
 
@@ -106,15 +115,15 @@ def test_read_tools_are_read_only(fresh_mp):
     tools = _tools(fresh_mp)
     for n in READ_TOOLS:
         a = tools[n].annotations
-        assert a.readOnlyHint is True, f"{n} should be readOnlyHint=True"
-        assert a.destructiveHint in (None, False), f"{n} read tool is destructive?"
+        assert _annotation(a, "readOnlyHint", "read_only_hint") is True, f"{n} should be readOnlyHint=True"
+        assert _annotation(a, "destructiveHint", "destructive_hint") in (None, False), f"{n} read tool is destructive?"
 
 
 def test_no_mutating_tool_marked_read_only(fresh_mp):
     tools = _tools(fresh_mp)
     bad = [
         n for n in (WRITE_TOOLS | DELETE_CLASS_TOOLS)
-        if tools[n].annotations.readOnlyHint is not False
+        if _annotation(tools[n].annotations, "readOnlyHint", "read_only_hint") is not False
     ]
     assert not bad, f"mutating tools wrongly marked read-only: {sorted(bad)}"
 
@@ -123,13 +132,13 @@ def test_delete_class_tools_are_destructive(fresh_mp):
     tools = _tools(fresh_mp)
     for n in DELETE_CLASS_TOOLS:
         a = tools[n].annotations
-        assert a.readOnlyHint is False, f"{n} delete-class must not be read-only"
-        assert a.destructiveHint is True, f"{n} must carry destructiveHint=True"
+        assert _annotation(a, "readOnlyHint", "read_only_hint") is False, f"{n} delete-class must not be read-only"
+        assert _annotation(a, "destructiveHint", "destructive_hint") is True, f"{n} must carry destructiveHint=True"
 
 
 def test_non_destructive_writes_not_flagged_destructive(fresh_mp):
     tools = _tools(fresh_mp)
-    bad = [n for n in WRITE_TOOLS if tools[n].annotations.destructiveHint is True]
+    bad = [n for n in WRITE_TOOLS if _annotation(tools[n].annotations, "destructiveHint", "destructive_hint") is True]
     assert not bad, f"non-destructive writes flagged destructive: {sorted(bad)}"
 
 
@@ -138,11 +147,11 @@ def test_annotation_consistency(fresh_mp):
     tools = _tools(fresh_mp)
     for n, t in tools.items():
         a = t.annotations
-        if a.readOnlyHint:
-            assert a.destructiveHint in (None, False), n
-            assert a.idempotentHint in (None, False), n
-        if a.destructiveHint:
-            assert a.readOnlyHint is False, n
+        if _annotation(a, "readOnlyHint", "read_only_hint"):
+            assert _annotation(a, "destructiveHint", "destructive_hint") in (None, False), n
+            assert _annotation(a, "idempotentHint", "idempotent_hint") in (None, False), n
+        if _annotation(a, "destructiveHint", "destructive_hint"):
+            assert _annotation(a, "readOnlyHint", "read_only_hint") is False, n
 
 
 @pytest.mark.parametrize("name", sorted(STATUS_TOOLS))
@@ -164,5 +173,5 @@ def test_status_tools_emit_validating_structured_content(fresh_mp, name):
     assert text_blocks, f"{name} dropped its legacy text block"
 
     # structured content present and validates against the advertised schema
-    assert result.structuredContent is not None, f"{name} returned no structuredContent"
-    jsonschema.validate(result.structuredContent, tool.output_schema)
+    assert _structured_content(result) is not None, f"{name} returned no structuredContent"
+    jsonschema.validate(_structured_content(result), tool.output_schema)
