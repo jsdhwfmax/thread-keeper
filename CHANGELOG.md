@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Project namespaces and default-deny cross-project recall (#359).** Memory
+  now carries an explicit project/global/shared scope and a path-free Git
+  namespace. Briefs, retrieval, resources, and learning inputs stay within the
+  current project unless global/shared memory is explicit; cross-project search
+  is opt-in, provenance-marked, and audited. Ambiguous legacy rows are
+  quarantined from automatic recall with per-table migration accounting.
+
 - **Added: privacy-bounded Curator web research (#355).** Curator evaluators
   retain their local audit coverage but have no web tools. External lookup is
   disabled by default; explicit operator consent starts a separate Claude-only
