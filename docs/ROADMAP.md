@@ -8,6 +8,42 @@ remains a live question.
 
 ---
 
+## 2026-10-16 reviewer audit
+
+This pass audited the current daemon, applier, status, Curator, skill-mirroring,
+retrieval, tracing, and spawned-child authority paths against the full issue
+history. Six distinct gaps remain:
+
+- **Spawned-child memory authority (#385).** Replace inherited or
+  caller-supplied write origins with a server-owned `read_only | propose |
+  write` capability and enforce scope before durable-memory retrieval and
+  mutation. An ordinary child must not inherit trusted foreground authority.
+- **Inbound MCP trace context (#386).** Validate negotiated W3C Trace Context
+  metadata at the request boundary and join it to the existing private
+  workflow/child trace chain without widening the telemetry data allowlist.
+- **Contextual memory indexing (#387).** Build a versioned deterministic
+  retrieval representation for short notes and dialog chunks, while keeping
+  the original body as display/provenance content and preserving pre-ranking
+  scope filters.
+- **Managed-skill mirror convergence (#388).** Verify file sets and hashes for
+  every configured mirror before reporting a managed write as successful;
+  bound retries and report redacted per-consumer partial failures.
+- **Canonical task-role telemetry (#389).** Use the persisted task role for
+  running, completion, failure, and loop status, with prompt parsing only as a
+  compatibility fallback for legacy rows.
+- **Consent gates for learned host mutations (#390).** Flag autonomous lessons
+  and skills that change machine-wide user state unless they include a scoped
+  precondition, consent boundary, and recovery path; protected content remains
+  immutable and visibly routed to owner review.
+
+Legacy suggestions now map to #372 for protected vendor-claim freshness, #373
+for source-missing skill reconciliation, #381 for hidden fixtures, #388 for
+mirror convergence, and #390 for host-state safety. The task-gate matcher,
+spawned-child marker forwarding, and fair per-adapter startup ingest budget are
+already implemented and regression-tested, so their duplicate legacy entries
+were dismissed. Protocol-native Tasks and forgetting-aware lifecycle evals
+remain tracked by #370 and #371.
+
 ## 2026-10-14 reviewer audit
 
 This pass reconciled the full issue history, current implementation, legacy
