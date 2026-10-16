@@ -64,6 +64,10 @@ registry suggestions share one repair lifecycle and are consolidated in #373.
 
 ## Closed
 
+- MCP server instructions (#354): MCP initialization now advertises concise,
+  static lifecycle guidance from the same fragments as the setup-managed block.
+  Hooks and managed instruction files remain compatibility reinforcement for
+  clients that do not surface the protocol field.
 - Role-scoped MCP tool profiles (#353): `core`, `coordination`,
   `memory-admin`, `learning-loops`, and compatibility `full` are applied before
   `tools/list`, with exact include/exclude validation, hidden-call rejection,

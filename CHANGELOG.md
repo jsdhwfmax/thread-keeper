@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **MCP lifecycle instructions (#354).** Server initialization now publishes
+  concise, static guidance for loading brief/context, maintaining thread
+  lifecycle, choosing read-only resources, and confirming destructive
+  maintenance. Setup-managed instruction files render the same lifecycle
+  fragments, while hooks and managed files remain compatibility reinforcement
+  for clients that do not surface server instructions.
+
 - **Role-scoped MCP tool profiles and deferred discovery (#353).** Servers
   apply `core`, `coordination`, `memory-admin`, `learning-loops`, or `full`
   before advertising tools. Exact include/exclude overrides fail closed, child
