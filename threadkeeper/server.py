@@ -10,7 +10,7 @@ To launch:
 from __future__ import annotations
 
 # Singleton must be importable before tool modules.
-from ._mcp import mcp
+from ._mcp import configure_tool_profile, mcp
 
 # Core modules — registered for completeness; no @mcp.tool() decorators here.
 # Import them so any import-time side effects happen in a predictable order.
@@ -63,6 +63,7 @@ from .tools import config_watch  # noqa: F401
 from .tools import db_maintenance  # noqa: F401
 from .tools import forget  # noqa: F401
 from .tools import authority  # noqa: F401
+from .tools import capabilities  # noqa: F401
 
 # MCP Resources & Prompts (roadmap #78) — the other two MCP server primitives.
 # Importing these registers @mcp.resource / @mcp.prompt entries (NOT tools) on
@@ -72,6 +73,10 @@ from .tools import authority  # noqa: F401
 from .tools import resources  # noqa: F401
 from .tools import prompts  # noqa: F401
 from .tools import sync  # noqa: F401
+
+# All decorators above register the complete catalog. Narrow it only after
+# registration, before the SDK can advertise or call the selected surface.
+configure_tool_profile()
 
 
 if __name__ == "__main__":

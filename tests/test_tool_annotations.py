@@ -26,7 +26,7 @@ import pytest
 
 # --- read-only tools: pure queries, no state mutation ------------------------
 READ_TOOLS = {
-    "agent_status", "brief", "candidate_review_status", "compost",
+    "agent_status", "brief", "capability_search", "candidate_review_status", "compost",
     "config_watch_status", "context", "core_get", "core_list",
     "curator_review_status", "dialectic_mine_status", "dialectic_review",
     "dialectic_synthesis", "dialectic_validate_status", "dialog_search",

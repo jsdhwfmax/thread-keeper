@@ -64,7 +64,12 @@ registry suggestions share one repair lifecycle and are consolidated in #373.
 
 ## Closed
 
-- Project namespaces and default-deny cross-project recall (#359): path-free
+- Role-scoped MCP tool profiles (#353): `core`, `coordination`,
+  `memory-admin`, `learning-loops`, and compatibility `full` are applied before
+  `tools/list`, with exact include/exclude validation, hidden-call rejection,
+  parent-surface intersections for spawned children, and bounded deferred
+  capability discovery.
+ - Project namespaces and default-deny cross-project recall (#359): path-free
   repository fingerprints are stable across worktrees and moves; project,
   global, shared, and unresolved scopes now flow through memory, retrieval,
   resources, and learning inputs. Legacy rows without safe provenance are

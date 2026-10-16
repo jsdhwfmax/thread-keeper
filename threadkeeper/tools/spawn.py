@@ -835,6 +835,25 @@ def _spawn_impl(prompt: str, cwd: str = "", append_system: str = "",
         "THREADKEEPER_SPAWNED_CHILD": "1",
         "THREADKEEPER_TZ": os.environ.get("THREADKEEPER_TZ", "UTC"),
     }
+    from .._mcp import active_tool_names
+    from ..tool_profiles import (
+        CHILD_TOOL_PROFILE_ENV,
+        TOOL_EXCLUDE_ENV,
+        TOOL_INCLUDE_ENV,
+        TOOL_PARENT_ALLOWLIST_ENV,
+        child_profile_environment,
+    )
+    from ..config import settings
+
+    configured_child_profile = (
+        child_env.get(CHILD_TOOL_PROFILE_ENV, "") or settings.child_tool_profile
+    )
+    child_env.pop(TOOL_INCLUDE_ENV, None)
+    child_env.pop(TOOL_EXCLUDE_ENV, None)
+    child_env.pop(TOOL_PARENT_ALLOWLIST_ENV, None)
+    child_env.update(
+        child_profile_environment(active_tool_names(), role, configured_child_profile)
+    )
     child_trace = new_child_trace(traceparent_override)
     if child_trace is not None:
         # Trace context travels only in the private child environment and task

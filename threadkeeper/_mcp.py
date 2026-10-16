@@ -36,6 +36,7 @@ from .mcp_skills import (
 )
 from .protocol import ReplaySafeWrites, caller_principal
 from .read_context import read_only_call
+from .tool_profiles import environment_selection
 
 
 class ThreadKeeperMCPServer(MCPServer):
@@ -94,6 +95,33 @@ mcp = ThreadKeeperMCPServer(
     ),
     middleware=[ReplaySafeWrites(WRITE_TOOL_NAMES)],
 )
+
+_active_tool_names: frozenset[str] = frozenset()
+
+
+def active_tool_names() -> frozenset[str]:
+    """Return the tools exposed by this server instance."""
+    return _active_tool_names or frozenset(mcp._tool_manager._tools)
+
+
+def configure_tool_profile() -> frozenset[str]:
+    """Remove tools outside the configured profile before ``tools/list`` runs."""
+    global _active_tool_names
+    from .config import settings
+
+    registered = frozenset(mcp._tool_manager._tools)
+    selected = environment_selection(
+        registered,
+        profile=settings.tool_profile,
+        include=settings.tool_include,
+        exclude=settings.tool_exclude,
+        parent_allowlist=settings.tool_parent_allowlist or None,
+    )
+    remove_tool = getattr(mcp, "remove_tool", mcp._tool_manager.remove_tool)
+    for name in registered - selected:
+        remove_tool(name)
+    _active_tool_names = selected
+    return selected
 
 
 def _traced_tool(fn):

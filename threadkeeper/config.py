@@ -89,6 +89,17 @@ class Settings(BaseSettings):
     )
     task_log_dir: Path = Field(default=Path("~/.threadkeeper/tasks"))
 
+    # ── MCP tool surface ─────────────────────────────────────────────────────
+    # Profiles are resolved once while the server starts. Restart the server
+    # after changing these values so its advertised registry stays stable.
+    tool_profile: str = "full"
+    tool_include: str = ""
+    tool_exclude: str = ""
+    # Internal child constraint emitted by spawn(); it only ever narrows the
+    # profile selection and is intentionally not part of setup guidance.
+    tool_parent_allowlist: str = ""
+    child_tool_profile: str = ""
+
     # ── Embeddings ───────────────────────────────────────────────────────────
     # env: THREADKEEPER_EMBED_MODEL (field name: embed_model → EMBED_MODEL_NAME)
     embed_model: str = Field(

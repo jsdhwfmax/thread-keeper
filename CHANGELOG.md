@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Role-scoped MCP tool profiles and deferred discovery (#353).** Servers
+  apply `core`, `coordination`, `memory-admin`, `learning-loops`, or `full`
+  before advertising tools. Exact include/exclude overrides fail closed, child
+  profiles cannot widen their parent surface, and `capability_search` supplies
+  bounded read-only metadata for hidden tool families. New setup registrations
+  start at `core`; existing unconfigured registrations retain `full`.
+
 - **Project namespaces and default-deny cross-project recall (#359).** Memory
   now carries an explicit project/global/shared scope and a path-free Git
   namespace. Briefs, retrieval, resources, and learning inputs stay within the

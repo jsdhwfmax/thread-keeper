@@ -1822,6 +1822,18 @@ FTS AND query retries as a BM25-ranked OR query. `search()`,
 `dialog_search()`, and `brief(query=...)` use this engine, so semantic
 availability can no longer disable lexical recall for partially embedded data.
 
+## MCP tool profiles
+
+`server.py` registers the complete catalog, then
+`_mcp.configure_tool_profile()` removes tools before the SDK can answer
+`tools/list`. `THREADKEEPER_TOOL_PROFILE` selects `core`, `coordination`,
+`memory-admin`, `learning-loops`, or compatibility `full`; exact
+`THREADKEEPER_TOOL_INCLUDE` and `THREADKEEPER_TOOL_EXCLUDE` overrides fail
+closed. A child profile is intersected with its parent surface, so a spawned
+child cannot widen its authority. Narrowed profiles retain the read-only
+`capability_search(query)` tool, which returns bounded family metadata without
+revealing hidden tool names.
+
 ## MCP tools
 
 Grouping by module. The runtime `tools/list` registry is the authoritative
@@ -1863,6 +1875,7 @@ below).
 | validate | validate_threads |
 | forget | forget |
 | authority | memory_authorize_action |
+| capabilities | capability_search |
 | invariants | find_invariants |
 | missed_spawns | find_missed_spawns |
 | db_maintenance | db_compact, db_deduplicate_embeddings, workflow_retention_preview |
