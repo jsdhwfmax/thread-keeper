@@ -8,6 +8,96 @@ remains a live question.
 
 ---
 
+## 2026-10-16 reviewer audit
+
+This pass audited the current daemon, applier, status, Curator, skill-mirroring,
+retrieval, tracing, and spawned-child authority paths against the full issue
+history. Six distinct gaps remain:
+
+- **Spawned-child memory authority (#385).** Replace inherited or
+  caller-supplied write origins with a server-owned `read_only | propose |
+  write` capability and enforce scope before durable-memory retrieval and
+  mutation. An ordinary child must not inherit trusted foreground authority.
+- **Inbound MCP trace context (#386).** Validate negotiated W3C Trace Context
+  metadata at the request boundary and join it to the existing private
+  workflow/child trace chain without widening the telemetry data allowlist.
+- **Contextual memory indexing (#387).** Build a versioned deterministic
+  retrieval representation for short notes and dialog chunks, while keeping
+  the original body as display/provenance content and preserving pre-ranking
+  scope filters.
+- **Managed-skill mirror convergence (#388).** Verify file sets and hashes for
+  every configured mirror before reporting a managed write as successful;
+  bound retries and report redacted per-consumer partial failures.
+- **Canonical task-role telemetry (#389).** Use the persisted task role for
+  running, completion, failure, and loop status, with prompt parsing only as a
+  compatibility fallback for legacy rows.
+- **Consent gates for learned host mutations (#390).** Flag autonomous lessons
+  and skills that change machine-wide user state unless they include a scoped
+  precondition, consent boundary, and recovery path; protected content remains
+  immutable and visibly routed to owner review.
+
+Legacy suggestions now map to #372 for protected vendor-claim freshness, #373
+for source-missing skill reconciliation, #381 for hidden fixtures, #388 for
+mirror convergence, and #390 for host-state safety. The task-gate matcher,
+spawned-child marker forwarding, and fair per-adapter startup ingest budget are
+already implemented and regression-tested, so their duplicate legacy entries
+were dismissed. Protocol-native Tasks and forgetting-aware lifecycle evals
+remain tracked by #370 and #371.
+
+## 2026-10-14 reviewer audit
+
+This pass reconciled the full issue history, current implementation, legacy
+Evolve suggestions, and the October research digest. Four distinct gaps remain:
+
+- **Official MCP conformance release gate (#379).** Run pinned official
+  conformance requirement sets for both supported protocol versions through a
+  test-only transport backed by the production handler registry. Retain focused
+  stdio tests for ThreadKeeper-specific discovery, metadata, and replay rules.
+- **Privacy-safe action/outcome memory (#380).** Evaluate a bounded operational
+  event stream that records normalized actions, coarse outcomes, stable error
+  fingerprints, and recovery links without retaining raw arguments or tool
+  output. Live ingestion stays gated on an offline comparison with the current
+  dialogue-only pipeline.
+- **Hidden managed-skill fixtures (#381).** Give seeds, probes, and test
+  fixtures an explicit lifecycle that remains available to validators but is
+  excluded from normal discovery, routing, and Curator production-health
+  counts.
+- **Skill validator coverage (#382).** Detect missing relative resources named
+  in path-like inline code and repeated normalized paragraphs within one skill,
+  with conservative exclusions for URLs, commands, examples, and boilerplate.
+
+The standard Tasks facade remains tracked in #370. General validity,
+supersession, and obsolete-evidence evaluation map to #371 and #372 on top of
+the completed authority lifecycle in #338. The mechanical issue gate treated
+the Evolve web-research data boundary as existing #355 work and the unified
+runtime process inventory as part of #364, so this pass did not file parallel
+issues. Legacy Curator report-write suggestions consolidate into #366; Codex
+child identity forwarding and the Task/Agent/Workflow gate are already present.
+
+## 2026-10-10 reviewer audit
+
+The resource-subscription (#345), privacy-safe tracing (#346), and
+outcome-evaluation (#347) items are complete. The remaining audit gaps are
+issue-backed and deliberately narrower:
+
+- **Standard MCP Tasks lifecycle (#370).** Give capable clients durable,
+  authorization-bound task handles with standard read and cooperative cancel
+  semantics, while preserving the current custom fallback for older hosts.
+- **Forgetting-aware store mutation evaluation (#371).** Exercise real
+  correction, supersession, consolidation, source erasure, and restart paths;
+  penalize obsolete evidence even when current evidence is also recalled.
+- **Protected-lesson freshness flags (#372).** Preserve protected lesson text
+  while attaching source-linked verified, contradicted, or unsubstantiated
+  states that are visible when the lesson is retrieved for a task.
+- **Source-missing skill reconciliation (#373).** Mark registry records without
+  a readable primary source unavailable, expose one recovery action, and allow
+  Curator to archive or remove a confirmed registry-only orphan after a
+  recoverable snapshot.
+
+The legacy task-gate suggestion was not re-filed because the setup matcher
+already recognizes `Task`, `Agent`, and `Workflow`. The two source-missing
+registry suggestions share one repair lifecycle and are consolidated in #373.
+
 ## Closed
 
 - Spawn as primary parallelism primitive (`spawn`, `tournament`, `tasks`,
