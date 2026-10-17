@@ -7,6 +7,12 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Opt-in SQLCipher storage profile (#360).** `threadkeeper[encrypted]` adds
+  an OS-secret-store-backed encrypted database mode without changing the
+  default SQLite installation. `tk-storage` initializes, validates, rekeys,
+  recovers interrupted rekeys, and migrates stores; profile-aware backup and
+  restore keep encrypted snapshots encrypted.
+
 - **MCP lifecycle instructions (#354).** Server initialization now publishes
   concise, static guidance for loading brief/context, maintaining thread
   lifecycle, choosing read-only resources, and confirming destructive
