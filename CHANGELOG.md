@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Transient Evolve-applier retries no longer consume an apply interval
+  (#365).** A child launch or a completed empty check advances the cursor;
+  no-child provisioning, GitHub, claim/race, lock, and spawn-refusal outcomes
+  preserve it, emit edge-triggered telemetry, and retry on a bounded short
+  cadence. Apply status now reports the latest attempt, latest successful
+  dispatch, and a pending retry time.
+
 - **Opt-in SQLCipher storage profile (#360).** `threadkeeper[encrypted]` adds
   an OS-secret-store-backed encrypted database mode without changing the
   default SQLite installation. `tk-storage` initializes, validates, rekeys,
