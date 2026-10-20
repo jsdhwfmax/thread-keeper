@@ -11,8 +11,8 @@ use short explicit transactions. One state file: `~/.threadkeeper/db.sqlite`.
 
 ## MCP SDK surface
 
-ThreadKeeper requires MCP Python SDK 2.2 or later (`mcp>=2.2.0,<3`). The
-stable Skills extension uses the MCP 2026-07-28 extension surface, while the
+ThreadKeeper requires MCP Python SDK 2.3 or later (`mcp>=2.3.0,<3`). The
+stable Skills and durable Tasks extensions use the MCP 2026-07-28 extension surface, while the
 same `MCPServer` instance continues to provide tool/resource/prompt
 registration, annotations, output schemas, structured content, elicitation,
 and stdio transport.
@@ -30,6 +30,7 @@ for a repeated modern mutation rather than running it twice.
 threadkeeper/
 ├── _mcp.py            MCPServer singleton (shared @mcp.tool / .resource / .prompt registrar)
 ├── mcp_skills.py       stable Skills extension + canonical skill manifests (#336)
+├── mcp_tasks.py        durable, authorization-bound headless spawn handles (#370)
 ├── server.py          entry point: import all tools/ → mcp.run() (stdio)
 ├── config.py          pydantic-settings Settings ← ~/.threadkeeper/.env (DB_PATH, …)
 ├── db.py              SCHEMA + user_version migrations + WAL-knobs + sqlite-vec loader

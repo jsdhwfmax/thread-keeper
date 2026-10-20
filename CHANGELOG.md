@@ -7,6 +7,12 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: durable MCP Tasks handles for headless spawned work (#370).**
+  Clients that advertise `io.modelcontextprotocol/tasks` receive an opaque,
+  authorization-bound handle for eligible `spawn(visible=False)` calls and can
+  poll `tasks/get` or cooperatively request cancellation with `tasks/cancel`.
+  Existing clients retain the synchronous spawn response.
+
 - **Transient Evolve-applier retries no longer consume an apply interval
   (#365).** A child launch or a completed empty check advances the cursor;
   no-child provisioning, GitHub, claim/race, lock, and spawn-refusal outcomes

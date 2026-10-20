@@ -98,10 +98,10 @@ def test_glama_dockerfile_pin_matches_the_project_release():
     assert f"threadkeeper=={version}" in DOCKERFILE.read_text()
 
 
-def test_mcp_requirement_uses_the_2x_skills_extension_surface():
+def test_mcp_requirement_supports_the_skills_and_tasks_extension_surface():
     deps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
     mcp_req = next(d for d in deps if d.split(">")[0].split("<")[0].strip() == "mcp")
-    assert mcp_req == "mcp>=2.2.0,<3"
+    assert mcp_req == "mcp>=2.3.0,<3"
 
     for importer in (
         ROOT / "threadkeeper" / "_mcp.py",
@@ -115,7 +115,7 @@ def test_mcp_requirement_uses_the_2x_skills_extension_surface():
 
 def test_ci_matrix_covers_the_supported_mcp_sdk_surface():
     matrix = _workflow("test.yml")["jobs"]["pytest-shard"]["strategy"]["matrix"]
-    assert matrix["mcp"] == [">=2.2.0,<3"]
+    assert matrix["mcp"] == [">=2.3.0,<3"]
     assert "include" not in matrix
     assert '"mcp${{ matrix.mcp }}"' in _workflow_text("test.yml")
 

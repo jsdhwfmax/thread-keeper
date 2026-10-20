@@ -767,6 +767,23 @@ CREATE TABLE IF NOT EXISTS project_scope_migration_report (
     unresolved_rows INTEGER NOT NULL DEFAULT 0
 );
 
+-- Public MCP Tasks-extension handles for eligible spawned work. The opaque
+-- task_id is deliberately separate from tasks.id: internal task IDs remain
+-- short display identifiers and must never become cross-client handles.
+CREATE TABLE IF NOT EXISTS mcp_task_handles (
+    task_id                TEXT PRIMARY KEY,
+    internal_task_id       TEXT NOT NULL UNIQUE,
+    owner_key              TEXT NOT NULL,
+    status                 TEXT NOT NULL CHECK(status IN
+                           ('working','completed','cancelled','failed')),
+    status_message         TEXT,
+    created_at             INTEGER NOT NULL,
+    last_updated_at        INTEGER NOT NULL,
+    cancel_requested_at    INTEGER,
+    cancel_accepted_at     INTEGER,
+    result_json            TEXT
+);
+
 -- Cross-process resource-control requests. The memory guard uses this as a
 -- small mailbox so one MCP server can ask peer servers to unload models/caches
 -- without sharing process memory.
@@ -866,6 +883,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_started  ON tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent   ON tasks(parent_cid);
 CREATE INDEX IF NOT EXISTS idx_tasks_spawned  ON tasks(spawned_cid);
 CREATE INDEX IF NOT EXISTS idx_tasks_running  ON tasks(ended_at) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mcp_task_handles_owner ON mcp_task_handles(owner_key);
 CREATE INDEX IF NOT EXISTS idx_resource_controls_pending
     ON resource_controls(target_pid, action, handled_at, expires_at);
 CREATE INDEX IF NOT EXISTS idx_github_rate_budget_cooldown

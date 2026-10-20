@@ -181,8 +181,8 @@ the `CLIAdapter` contract. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Python MCP SDK surface
 
-thread-keeper requires MCP Python SDK 2.2 or later (`mcp>=2.2.0,<3`). Its
-stable Skills extension uses the MCP 2026-07-28 extension surface, while tools,
+thread-keeper requires MCP Python SDK 2.3 or later (`mcp>=2.3.0,<3`). Its
+stable Skills and durable Tasks extensions use the MCP 2026-07-28 extension surface, while tools,
 resources, prompts, annotations, structured content, elicitation, and stdio
 continue to use the same `MCPServer` instance.
 
@@ -266,6 +266,23 @@ Discovery and `resources/read` are delivery only. Reading `SKILL.md` does not
 activate it, approve its tools, record use telemetry, or approve supporting
 files. Activation and any user approval remain responsibilities of the host's
 skill-loading path.
+
+### MCP Tasks for headless spawn
+
+Clients using MCP 2026-07-28 that advertise the
+`io.modelcontextprotocol/tasks` extension can call `spawn(..., visible=False)`
+as a durable asynchronous operation. The response is an opaque public task
+handle; poll it with `tasks/get` and request cooperative cancellation with
+`tasks/cancel`. Handles are bound to the authenticated caller (or the local OS
+user for stdio), survive a host reconnect, and never expose the short internal
+spawn ID. The server suggests a five-second polling interval.
+
+Only headless `spawn` is task-eligible: visible Terminal.app work has no stable
+process-group handle. `tournament`, `tasks`, `task_logs`, and the legacy custom
+spawn lifecycle stay unchanged. Clients that do not advertise the extension
+receive the existing synchronous `spawn` response, including on older protocol
+versions. `spawn` does not pause for approval, so it deliberately does not
+implement `tasks/update` or task enumeration.
 
 ### Memory egress (cross-provider privacy)
 
