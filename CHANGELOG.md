@@ -7,6 +7,48 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Fixed: project namespaces reach databases already at schema v5, and
+  legacy memory stays recallable.** Namespaces were added under the existing
+  v5 schema, so a database that was already at v5 skipped their migration and
+  every scoped query failed on the missing `project_id` column. Such databases
+  now get the columns and a one-time backfill on their next start. Legacy rows
+  without reliable provenance become `global` instead of `unresolved`, so a
+  user's rules, threads and history stay in every brief; new memory is scoped.
+
+- **Fixed: the daemon host no longer inherits a child's identity.** When a
+  curator or model-router child's MCP server happened to spawn the host, the
+  host kept that child's pass id, egress consumer and conversation id. The
+  curator then restored the stale pass id after every batch, so later children
+  of every loop inherited it, and all host-spawned children named the dead
+  child as their parent. The host now drops per-child identity variables and
+  gets its own conversation id on every spawn.
+
+- **Added: model router for `auto` roles.** A new weekly loop reviews spawn
+  telemetry for every role whose CLI is set to `auto` and picks its CLI, model
+  and effort, with a reason per decision. The router runs on Claude Opus at
+  `max` effort and reruns on `gpt-6.1-sol` at `xhigh` when that run fails.
+  New tools: `model_route_write`, `model_router_run`, `model_router_status`.
+  **Behaviour change:** roles already set to `SPAWN__LOOP__<ROLE>=auto` are
+  routed once the router records a decision (the first pass runs soon after
+  upgrade). Set `THREADKEEPER_MODEL_ROUTER_INTERVAL_S=0` to keep the old
+  meaning (follow the active CLI).
+
+- **Fixed: tables added after schema v5 now reach existing databases.**
+  Durable Curator passes, staged embedding upgrades, and memory authority added
+  tables to the baseline schema without a version bump. Databases already at v5
+  never received them, so the host's initial transcript ingest crashed on every
+  start with `no such table: memory_authority`. Every bootstrap now replays the
+  idempotent baseline schema, and a test keeps every baseline statement
+  `CREATE ... IF NOT EXISTS`.
+
+- **Fixed: an interrupted conflict repair with unstaged edits no longer
+  blocks Evolve apply.** When a conflict-repair child was killed after staging
+  a resolution and then editing the same file again, merge recovery used
+  `git merge --abort`, which refuses to drop those edits. Every scheduled pass
+  then stopped with `open_pr_merge_abort_failed`. Recovery now resets the
+  orphaned merge to `HEAD` after archiving the full tracked diff, which
+  already includes those edits.
+
 - **Added: durable MCP Tasks handles for headless spawned work (#370).**
   Clients that advertise `io.modelcontextprotocol/tasks` receive an opaque,
   authorization-bound handle for eligible `spawn(visible=False)` calls and can
