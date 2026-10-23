@@ -404,8 +404,8 @@ def test_apply_curator_report_builds_evolve_applier_spawn(
     assert calls["cwd"] == str(pkg["ea"]._repo_root())
     assert "Do not open a thread" in calls["append_system"]
     tools = calls["extra_allowed_tools"]
-    assert "lesson_remove" in tools
-    assert "lesson_append" in tools
+    assert "lesson_remove" not in tools
+    assert "lesson_patch" in tools
     assert "skill_manage" in tools
     assert "evolve_mark_curator_report_applied" in tools
     assert "Bash" not in tools and "Edit" not in tools
@@ -449,7 +449,19 @@ def test_authorized_curator_report_writer_is_applied_once(
     report_name = f"REPORT-{pass_id}.md"
     monkeypatch.setenv(PASS_ID_ENV, pass_id)
     conn = pkg["db"].get_db()
-    curator._authorize_curator_report(conn, int(time.time()), pass_id, report_name)
+    launch = curator._new_curator_launch(pass_id, None, 0, 0)
+    conn.execute(
+        "INSERT INTO tasks (id, pid, parent_cid, spawned_cid, cwd, prompt, "
+        "started_at, role, write_origin) VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            "tk_curator_report", 1, "parent", _FAKE_CID, str(tmp_path),
+            "curator assignment", int(time.time()), "curator", "curator",
+        ),
+    )
+    curator._record_curator_child_launch(
+        conn, launch, "tk_curator_report", _FAKE_CID,
+    )
+    conn.commit()
     write_report = _tool(pkg, "curator_report_write")
     assert write_report(
         pass_id=pass_id,
@@ -1667,30 +1679,45 @@ def test_apply_roadmap_issue_skips_dirty_worktree_and_records_event(
 
 
 @pytest.mark.parametrize(
-    ("pr_state", "merged_at", "backup_prefix", "recovery_summary"),
+    (
+        "pr_state", "merged_at", "backup_prefix", "recovery_summary",
+        "repair_left_unstaged_edit",
+    ),
     [
         (
             "MERGED",
             "2026-07-12T10:28:56Z",
             "stale-merge-pr-7",
             "recovered_stale_merge pr=#7",
+            False,
         ),
         (
             "OPEN",
             None,
             "interrupted-open-pr-merge-pr-7",
             "recovered_open_pr_merge pr=#7",
+            False,
+        ),
+        (
+            "OPEN",
+            None,
+            "interrupted-open-pr-merge-pr-7",
+            "recovered_open_pr_merge pr=#7",
+            True,
         ),
     ],
 )
 def test_managed_checkout_recovers_orphaned_merge_for_known_pr(
     tmp_path, monkeypatch, pr_state, merged_at, backup_prefix, recovery_summary,
+    repair_left_unstaged_edit,
 ):
     """A killed repair child must not leave the whole backlog blocked forever.
 
     Recovery is restricted to the auto-managed checkout and archives the
     tracked merge diff before returning the tree to the fresh configured base.
-    Open PR merges are aborted for a clean retry; merged PR leftovers are stale.
+    Open PR merges are reset for a clean retry; merged PR leftovers are stale.
+    A child killed after staging a resolution and editing it again leaves
+    unstaged changes on a merge-touched path, which `git merge --abort` refuses.
     """
     pkg = _bootstrap(tmp_path, monkeypatch, pin_repo=False)
     conn = pkg["db"].get_db()
@@ -1745,6 +1772,10 @@ def test_managed_checkout_recovers_orphaned_merge_for_known_pr(
     conflicted = git("merge", "origin/main", check=False)
     assert conflicted.returncode != 0
     assert git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
+    if repair_left_unstaged_edit:
+        (repo / "shared.txt").write_text("resolved\n", encoding="utf-8")
+        git("add", "shared.txt")
+        (repo / "shared.txt").write_text("resolved again\n", encoding="utf-8")
 
     monkeypatch.setattr(
         pkg["ea"], "_prs_for_head_branch",
@@ -1774,7 +1805,10 @@ def test_managed_checkout_recovers_orphaned_merge_for_known_pr(
         (tmp_path / "evolve-recovery").glob(f"{backup_prefix}-*.patch")
     )
     assert len(backups) == 1
-    assert "diff --git" in backups[0].read_text(encoding="utf-8")
+    backup_text = backups[0].read_text(encoding="utf-8")
+    assert "diff --git" in backup_text
+    if repair_left_unstaged_edit:
+        assert "+resolved again" in backup_text
     assert backups[0].stat().st_mode & 0o777 == 0o600
     row = conn.execute(
         "SELECT target, summary FROM events WHERE kind=? ORDER BY id DESC",
@@ -2923,6 +2957,9 @@ def test_run_apply_pass_blocks_new_work_when_pr_sweep_fails(
         "ORDER BY id DESC LIMIT 1"
     ).fetchone()
     assert ev["summary"] == out
+    # A failed preflight has no child to account for, so it must not consume
+    # a long apply interval.
+    assert pkg["ea"]._last_apply_ts(conn) == 0
 
 
 def test_run_apply_pass_skips_unstartable_issue_and_spawns_next(
@@ -2994,6 +3031,220 @@ def test_run_apply_pass_picks_oldest_promoted(tmp_path, monkeypatch):
     assert "newer promoted" not in calls["prompt"]
     # pass was recorded
     assert pkg["ea"]._last_apply_ts(conn) > 0
+
+
+def test_apply_pass_transient_outcomes_preserve_cursor_and_edge_trigger(
+    tmp_path, monkeypatch,
+):
+    """No-child blockers keep the previous interval high-water intact."""
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+
+    for outcome in (
+        "applier_running n=1",
+        "ERR evolve_repo_provisioning_in_progress retry_later=1",
+        "conflicted_pr_fetch_error: gh_pr_list_failed: rate limited",
+        "roadmap_issue_fetch_error: gh_api_failed: timeout",
+        "roadmap_issue_fetch_error: no_roadmap_issue_startable "
+        "ERR roadmap_issue_lost_race=5",
+    ):
+        ea._record_transient_apply_pass(conn, outcome)
+        assert ea._last_apply_ts(conn) == 1000
+
+    count = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE kind='evolve_apply_pass'"
+    ).fetchone()[0]
+    ea._record_transient_apply_pass(
+        conn,
+        "roadmap_issue_fetch_error: no_roadmap_issue_startable "
+        "ERR roadmap_issue_lost_race=7",
+    )
+    assert conn.execute(
+        "SELECT COUNT(*) FROM events WHERE kind='evolve_apply_pass'"
+    ).fetchone()[0] == count
+
+
+def test_run_apply_pass_checkout_and_issue_fetch_failures_retry_without_cursor(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+    monkeypatch.setattr(
+        ea, "_ensure_repo_ready", lambda: (Path("/x"), "ERR evolve_repo_failed"),
+    )
+
+    assert ea.run_evolve_apply_pass(force=True) == "ERR evolve_repo_failed"
+    assert ea._last_apply_ts(conn) == 1000
+
+    monkeypatch.setattr(ea, "_ensure_repo_ready", lambda: (tmp_path, ""))
+    monkeypatch.setattr(
+        ea, "_fetch_open_issues", lambda repo_root=None: ([], "gh timeout"),
+    )
+    out = ea.run_evolve_apply_pass(force=True)
+    assert out == "roadmap_issue_fetch_error: gh timeout"
+    assert ea._last_apply_ts(conn) == 1000
+
+
+def test_run_apply_pass_returned_spawn_refusal_retracts_claim_and_no_attempt(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+    monkeypatch.setattr(
+        ea, "_fetch_open_issues", lambda repo_root=None: ([_issue(5, "Retry")], ""),
+    )
+    monkeypatch.setattr(
+        ea, "_comment_issue_claim", lambda issue, repo_root=None: (
+            "https://x/issues/5#issuecomment-mine", ""
+        ),
+    )
+    deleted = []
+    monkeypatch.setattr(
+        ea, "_delete_issue_comment", lambda url, repo_root=None: deleted.append(url) or "",
+    )
+    import threadkeeper.tools.spawn as spawn_mod
+    monkeypatch.setattr(
+        spawn_mod, "spawn", lambda **kw: "ERR spawn budget cap would be exceeded",
+    )
+
+    out = ea.run_evolve_apply_pass(force=True)
+
+    assert "spawn_error issue=#5" in out
+    assert ea._last_apply_ts(conn) == 1000
+    assert deleted == ["https://x/issues/5#issuecomment-mine"]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM events WHERE kind=?", (ea.ROADMAP_ISSUE_ATTEMPT_KIND,)
+    ).fetchone()[0] == 0
+
+
+def test_run_apply_pass_busy_race_and_raised_spawn_keep_cursor(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+    monkeypatch.setattr(ea, "_running_applier_children", lambda conn: ["live"])
+
+    assert ea.run_evolve_apply_pass(force=True).startswith("applier_running")
+    assert ea._last_apply_ts(conn) == 1000
+
+    monkeypatch.setattr(ea, "_running_applier_children", lambda conn: [])
+    monkeypatch.setattr(
+        ea, "_fetch_open_issues", lambda repo_root=None: ([_issue(5, "Retry")], ""),
+    )
+    monkeypatch.setattr(
+        ea, "_resolve_claim_race", lambda number, url, repo_root=None: (False, ""),
+    )
+    assert "roadmap_issue_lost_race=#5" in ea.run_evolve_apply_pass(force=True)
+    assert ea._last_apply_ts(conn) == 1000
+
+    monkeypatch.setattr(
+        ea, "_resolve_claim_race", lambda number, url, repo_root=None: (True, ""),
+    )
+    import threadkeeper.tools.spawn as spawn_mod
+    monkeypatch.setattr(
+        spawn_mod,
+        "spawn",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("temporary refusal")),
+    )
+    assert "spawn_error issue=#5" in ea.run_evolve_apply_pass(force=True)
+    assert ea._last_apply_ts(conn) == 1000
+    assert conn.execute(
+        "SELECT COUNT(*) FROM events WHERE kind=?", (ea.ROADMAP_ISSUE_ATTEMPT_KIND,)
+    ).fetchone()[0] == 0
+
+
+def test_apply_pass_recovery_dispatches_on_next_tick_and_consumes_once(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+    monkeypatch.setattr(
+        ea, "_ensure_repo_ready", lambda: (Path("/x"), "ERR evolve_repo_failed"),
+    )
+    assert ea.run_evolve_apply_pass(force=True) == "ERR evolve_repo_failed"
+    assert ea._last_apply_ts(conn) == 1000
+
+    monkeypatch.setattr(ea, "_ensure_repo_ready", lambda: (tmp_path, ""))
+    _add_evolve(conn, "recovered promoted change", status="promoted")
+    calls = {}
+    _mock_spawn(monkeypatch, calls)
+
+    out = ea.run_evolve_apply_pass(force=True)
+
+    assert out.startswith("spawned evolve_id="), out
+    assert ea._last_apply_ts(conn) > 1000
+    assert ea._last_apply_dispatch_ts(conn) > 0
+
+
+def test_apply_pass_empty_check_consumes_interval_but_not_dispatch(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+
+    assert ea.run_evolve_apply_pass(force=True) == "no_apply_work"
+    assert ea._last_apply_ts(conn) > 0
+    assert ea._last_apply_dispatch_ts(conn) == 0
+    assert ea.run_evolve_apply_pass() == "not_due"
+
+
+def test_apply_pass_label_only_queue_is_an_intentional_empty_check(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    ea = pkg["ea"]
+
+    assert ea._apply_pass_outcome(
+        "roadmap_issue_skipped_label: skipped: #5 label blocked"
+    ) == ea._APPLY_PASS_EMPTY
+
+
+def test_apply_pass_status_distinguishes_attempt_dispatch_and_retry(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    conn = pkg["db"].get_db()
+    ea = pkg["ea"]
+    ea._record_apply_pass(conn, 1000, "spawned roadmap_issue=#1 ok")
+    ea._record_transient_apply_pass(conn, "conflicted_pr_fetch_error: timeout")
+
+    out = _tool(pkg, "evolve_apply_status")()
+
+    assert "last_attempt_ts=" in out
+    assert "last_successful_dispatch_ts=" in out
+    assert "next_retry_ts=" in out and "next_retry_ts=0" not in out
+
+
+def test_apply_daemon_uses_short_sleep_for_transient_outcome(
+    tmp_path, monkeypatch,
+):
+    pkg = _bootstrap(tmp_path, monkeypatch, interval="604800")
+    ea = pkg["ea"]
+    sleeps = []
+    monkeypatch.setattr(ea, "run_evolve_apply_pass", lambda: "applier_running n=1")
+
+    def _stop_after_sleep(delay):
+        sleeps.append(delay)
+        raise StopIteration
+
+    monkeypatch.setattr(ea, "daemon_sleep", _stop_after_sleep)
+    try:
+        ea._serve_loop()
+    except StopIteration:
+        pass
+
+    assert sleeps == [ea._TRANSIENT_APPLY_RETRY_S]
 
 
 # ── repo-root resolution + auto-provisioning ───────────────────────────────

@@ -11,8 +11,8 @@ use short explicit transactions. One state file: `~/.threadkeeper/db.sqlite`.
 
 ## MCP SDK surface
 
-ThreadKeeper requires MCP Python SDK 2.2 or later (`mcp>=2.2.0,<3`). The
-stable Skills extension uses the MCP 2026-07-28 extension surface, while the
+ThreadKeeper requires MCP Python SDK 2.3 or later (`mcp>=2.3.0,<3`). The
+stable Skills and durable Tasks extensions use the MCP 2026-07-28 extension surface, while the
 same `MCPServer` instance continues to provide tool/resource/prompt
 registration, annotations, output schemas, structured content, elicitation,
 and stdio transport.
@@ -30,6 +30,7 @@ for a repeated modern mutation rather than running it twice.
 threadkeeper/
 ├── _mcp.py            MCPServer singleton (shared @mcp.tool / .resource / .prompt registrar)
 ├── mcp_skills.py       stable Skills extension + canonical skill manifests (#336)
+├── mcp_tasks.py        durable, authorization-bound headless spawn handles (#370)
 ├── server.py          entry point: import all tools/ → mcp.run() (stdio)
 ├── config.py          pydantic-settings Settings ← ~/.threadkeeper/.env (DB_PATH, …)
 ├── db.py              SCHEMA + user_version migrations + WAL-knobs + sqlite-vec loader
@@ -45,6 +46,7 @@ threadkeeper/
 ├── backup.py          tk-backup VACUUM INTO snapshot/restore command
 ├── forget.py          targeted session/cid/thread/dialog erasure planner + CLI
 ├── agent_status.py    structured loop/agent/recent-result status for UI clients
+├── dashboard_app.py   sandboxed, display-only ui:// dashboard (#364)
 ├── brief.py           render_brief() / render_context() — main digest
 ├── egress.py          cross-provider memory egress policy (issue #74)
 ├── nudges.py          counter-driven memory_nudge / skill_hint / auto-review
@@ -217,17 +219,44 @@ sidecars, `~/.threadkeeper/.env`, and curator `REPORT-*.md` files are
 `0600`. Logically six levels:
 
 Backups use the `tk-backup` console command, not raw file copies. `tk-backup
-create <dest.sqlite>` opens the live store through SQLite and runs
-`VACUUM INTO` into a temporary database beside the requested destination, runs
-`PRAGMA integrity_check`, then atomically moves the single-file result into
-place. Because the source is a SQLite connection, committed WAL frames are part
-of the snapshot even while ingest, shadow-review, curator, dialectic, retention,
-or other writer loops keep running. `tk-backup restore <backup.sqlite> --yes`
+create <dest.sqlite>` uses `VACUUM INTO` for the ordinary SQLite profile and
+SQLCipher's online backup API for the encrypted profile, into a temporary
+database beside the requested destination. It runs `PRAGMA integrity_check`,
+then atomically moves the single-file result into place. Because the source is
+a database connection, committed WAL frames are part of the snapshot even while
+ingest, shadow-review, curator, dialectic, retention, or other writer loops
+keep running. `tk-backup restore <backup.sqlite> --yes`
 verifies the backup, copies it next to the target DB, removes stale target
 `-wal`/`-shm` sidecars, atomically replaces the main file, removes sidecars
 again, and re-runs integrity_check. Restore still requires stopping live
 thread-keeper servers first; replacing a database under an open SQLite
 connection can strand that process on the old unlinked file.
+
+### Encrypted storage profile
+
+`THREADKEEPER_STORAGE_PROFILE=sqlite` is the dependency-free default. The
+explicit `sqlcipher` profile is backed by `sqlcipher3-wheels` and uses the
+platform secret store through `keyring`; the profile selection is config, but
+the generated 256-bit database key is never configuration, environment, CLI
+input, event, telemetry, or logging data. The `db` connection factory opens
+SQLCipher only after retrieving and validating that key. A missing database is
+not auto-created in this profile, which prevents a wrong/missing key from
+creating a replacement store.
+
+SQLCipher encrypts the primary file, WAL/rollback journal, and encrypted
+backup/restore/migration staging files. Connections set `temp_store=MEMORY`
+and `cipher_memory_security=ON`, so SQLite temporary structures are not placed
+in plaintext files. `tk-storage init`, `integrity-check`, `rekey`,
+`recover-rekey`, and `migrate` own lifecycle actions. Rekey places a second,
+pending key only in the OS secret store before rotating; an interrupted rekey
+fails closed until `recover-rekey` validates the old or pending key and repairs
+the primary entry. Migration writes a separately validated destination and
+leaves the source intact.
+
+The boundary is deliberately narrow. Task logs, curator reports and trash,
+exports, skills/lessons, source transcripts, identity sidecars, and sync
+transport are outside this profile. Operators need full-disk encryption and
+the documented retention/transport controls for those artifacts.
 
 `bootstrap_db()` gates baseline schema setup and legacy column migrations with
 SQLite `PRAGMA user_version`, once per process. Databases at the current
@@ -239,7 +268,10 @@ legacy columns, run data backfills, then set `user_version` to the code's
 re-checks `user_version` before doing work, so only one process performs the
 migration. Duplicate-column `ALTER TABLE` failures are the only swallowed
 migration errors; any other `OperationalError` is logged and raised with the
-version left unchanged for a retry.
+version left unchanged for a retry. After the version gate, every bootstrap
+replays `SCHEMA` and `ADDITIVE_RUNTIME_SCHEMA`. Both are `CREATE ... IF NOT
+EXISTS` only (a test enforces this for `SCHEMA`), so a table added without a
+version bump still reaches databases that are already current.
 
 Steady-state access is split by intent:
 
@@ -324,8 +356,9 @@ Steady-state access is split by intent:
    `last_patched_at` remains the external-edit mtime. This is the input for the
    curator.
 
-6. **lesson_usage** — telemetry for `lessons.md` slugs. `lesson_list` bumps
-   `view_count`, `lesson_get` bumps `use_count`, and the curator uses
+6. **lesson_usage** — telemetry for `lessons.md` slugs. A foreground
+   `lesson_list` bumps `view_count`, a foreground `lesson_get` bumps
+   `use_count` (loop and curator reads are not counted), and the curator uses
    `last_used_at` / `last_viewed_at` / pull counts for decay scoring.
    `pinned=1` and `tier='validated'` exclude a lesson from stale-compost
    recommendations.
@@ -470,7 +503,11 @@ observability only: the supervisor restarts dead threads, never a live child.
   updates GitHub-backed skills that carry `.threadkeeper-skill-source.json` or
   can be inferred from `THREADKEEPER_SKILL_UPDATE_SOURCES`. Replaced local
   skills are backed up under the state dir, and source-tracked local edits after
-  the last upstream hash are skipped rather than overwritten.
+  the last upstream hash are skipped rather than overwritten. A primary copy
+  that fails validation is never mirrored, and a skill whose primary copy was
+  deleted or archived is not imported back from an older leftover copy: the
+  leftovers are removed instead (`removed_strays`). A copy written after the
+  removal counts as a new install and is imported.
 - **config_watcher** (`config_watcher.start_config_watcher`) — once per
   `CONFIG_WATCH_INTERVAL_S` (default 2 s, 0 = off) stats **two** targets, each
   with its own mtime cursor (#2, generalized cross-CLI in #133):
@@ -573,6 +610,15 @@ moving the high-water forward; `force=True` bypasses this due gate.
   `THREADKEEPER_DIALECTIC_OBS_MAX_REQUEUES` (default 3, 0 = uncapped) the row is
   terminally skipped as poison (`poison_skip` pass event) instead of respawning
   a fresh child against the same unresolvable batch every interval.
+- **model_router** — ticks hourly; starts a pass once per
+  `MODEL_ROUTER_INTERVAL_S` (default 604800, weekly) or as soon as a role set to
+  `auto` has no valid decision. The parent builds a fenced telemetry digest
+  (`model_router_digest.py`) and spawns the router (`claude`/`opus`/`max` by
+  default). The child can only call `model_route_write`, which validates every
+  decision against the model catalog and writes `model_routes` atomically. A
+  child that exits without a decision triggers one fallback run
+  (`MODEL_ROUTER_FALLBACK_*`, default `codex`/`gpt-6.1-sol`/`xhigh`); two failures
+  back off for 6 h. State lives in `model_router_passes`.
 - **curator** — once per `CURATOR_INTERVAL_S` (default 259200 = three days)
   audits lessons, concepts, and every tracked/materialized skill through
   bounded slim-child batches. A deterministic parent phase writes
@@ -628,16 +674,16 @@ moving the high-water forward; `force=True` bypasses this due gate.
   counts. The same counts are available on the Curator row of `agent_status`.
   Dispatch telemetry records total entries, batch count, compressed
   `batch_entries`, and max rendered batch chars.
-  The pass ID and snapshot directory are exported only around each batch
-  launch, so they never leak into other loops' children.
-  Before dispatching each child, the parent also authorizes that exact
-  `REPORT-*.md` destination in a `curator_pass` event. The spawned Curator's
-  path-scoped writer requires that authorization plus its matching pass ID and
-  records the final SHA-256 in `curator_report_provenance`; a file appearing in
-  the report directory alone is therefore never trusted as Curator output.
+  The parent supplies pass and snapshot context only as private, task-bound
+  launch data; ordinary spawns strip stale inherited values. It records the
+  task, child identity, pass, batch, role, origin, and exact report/research
+  destination before launch. Writers require that binding, and a watchdog retry
+  may restore only recorded launch data. The report writer records the final
+  SHA-256 in `curator_report_provenance`; a file appearing in the report
+  directory alone is therefore never trusted as Curator output.
   Destructive lesson removals and skill deletes reserve from one atomic,
   pass-ID-scoped server-side budget before touching disk. The default
-  `CURATOR_MAX_DESTRUCTIVE_PER_PASS=10` is shared across child batches and
+  `CURATOR_MAX_DESTRUCTIVE_PER_PASS=30` is shared across child batches and
   processes; the reservation event makes a cap refusal visible as
   `curator_destructive_cap status=HIT` in `mp_dashboard`. Recovery snapshots
   remain available. Foreground deletes bypass this autonomous-delete guard;
@@ -825,7 +871,14 @@ moving the high-water forward; `force=True` bypasses this due gate.
   Machine-wide single-flight uses `evolve-applier.lock` plus the `"You are an
   EVOLVE APPLIER"` prompt prefix. Automatic apply passes respect the configured
   interval to avoid duplicate issue workers across foreground server startups;
-  manual apply tools still dispatch immediately. If no roadmap issue is
+  manual apply tools still dispatch immediately. Like the reviewer contract
+  above, an applier pass consumes that interval only after a child actually
+  launches or after a complete empty-queue check. A busy lock, managed-checkout
+  provisioning error, PR/issue/claim/race fetch failure, or raised/returned
+  spawn refusal preserves the cursor, records only the leading instance of a
+  consecutive blocker class, and retries on a bounded short (~1h) cadence.
+  `evolve_apply_status()` separates the latest attempt from the latest
+  successful dispatch and reports a pending retry time. If no roadmap issue is
   startable, the pass falls back to Curator reports and then legacy promoted
   `evolve_format` suggestions. Both the reviewer and the code/PR applier paths
   operate on a real git checkout, resolved by `_ensure_repo_ready()` in this
@@ -1047,6 +1100,12 @@ session via the configured CLI adapter (`claude -p`, `codex exec`, etc.).
 only thread-keeper with full state and embeddings) plans and makes decisions;
 spawned children are light-executors. Trigger: **N≥2 modular independent units,
 ≥5 min each**.
+
+`spawn_config.resolve_*` checks `route_for(role)` first: a role whose loop value
+is `auto` takes CLI, model and effort from its latest `model_routes` row when the
+cached model catalog still offers it. Otherwise resolution is unchanged:
+`SPAWN__LOOP__<role>` → `ROLE_DEFAULTS` → `SPAWN__DEFAULT` → active CLI →
+`claude`.
 
 For Codex children, normal `permission_mode="auto"` spawns use
 `codex exec --sandbox workspace-write`. PR-gated code-evolve spawns use
@@ -1324,9 +1383,8 @@ every SHADOW_REVIEW_INTERVAL_S (default 0=off, typical prod 900s):
 6. The child IS the LLM evaluator. Decides class-vs-incident, on materialization
    first checks existing lessons/skills, then prefers patching or creating a
    broad skill. `lesson_append(source='shadow')` is the compact fallback; a
-   clear new directive or debunk records `lesson_reconciliation` events for
-   older permissive lessons on the same concrete practice so a curator can
-   patch, cross-link, or supersede them.
+   lesson that debunks a near-duplicate is refused so the child corrects the
+   existing lesson with `lesson_patch` instead of adding a conflicting one.
 7. Child-side MCP startup sees `THREADKEEPER_SPAWNED_CHILD=1` /
    `write_origin='shadow_review'` and refuses to start its own shadow daemon.
 8. Write events.kind='shadow_review_pass' with the new high-water rowid only
@@ -1361,11 +1419,16 @@ children, native `agent-*` parent cids, and descendants reached through
 foreground promotion all consult this same boundary.
 SHADOW_REVIEW_PROMPT — inline rubric class-vs-incident, defense against
 false positives (false negatives are "cheaper"). Shadow-origin lessons have
-a hard body cap, a cheap slug-similarity duplicate gate, and a semantic body
-duplicate gate. Strong semantic matches patch/append evidence to the incumbent
-lesson, while borderline or protected matches are rejected with the incumbent
-slug so the child/curator patches existing memory instead of growing the flat
-lessons list.
+a hard body cap. Every writer passes a cheap slug-similarity duplicate gate and
+a semantic body duplicate gate (lesson vectors are cached per process, so a
+write encodes only new text). For loop writers, strong semantic matches
+patch/append evidence to the incumbent lesson, while borderline or protected
+matches are rejected with the incumbent slug so the child/curator patches
+existing memory instead of growing the flat lessons list. Foreground writers get
+the same refusal and may override it only with `new_despite=<neighbour-slug>`.
+A near-duplicate whose new text debunks permissive incumbent guidance is
+refused for every writer (`ERR contradicts_existing_lesson`), and refusals are
+logged as `lesson_refused` events.
 
 Manual hook: `shadow_review_run(force=True)`, observability:
 `shadow_review_status()`. Beyond the last few passes, the status tool carries a
@@ -1404,7 +1467,10 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   descriptions load in Codex and other strict parsers. `write_file/remove_file`
   are restricted to subfolders
   `references|templates|scripts|assets` with path-traversal blocking.
-  `patch` revalidates the result before writing. Every successful write
+  `patch` revalidates the result before writing. A non-foreground `create`,
+  `edit`, or `patch` may not grow SKILL.md past `SKILL_MD_SOFT_CAP_CHARS`
+  (20 000): it is refused with a hint to move detail into `references/` via
+  `write_file`, while shrinking or same-size rewrites stay allowed. Every successful write
   mirrors the whole skill directory into all configured roots:
   `~/.claude/skills/`, `~/.codex/skills/`,
   `~/.gemini/config/skills/` for Antigravity, existing `~/.agents/skills/`,
@@ -1422,15 +1488,17 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   from jsonl: sees `name=Skill` → raw `use_count++`, `last_used_at=ts`. The
   `foreground_use_count` is the authoritative promotion/trust signal: it is
   the foreground subset of raw uses, with spawned review-fork activity
-  excluded so automation cannot promote a skill tier. `skill_list` records a
-  `view_count` bump for every returned row. The curator checklist shows raw
-  uses, foreground uses, views, and patches, but the curator's own automated
-  inventory read does not count as a view. The `skill_watcher` daemon catches
+  excluded so automation cannot promote a skill tier. `skill_list` is not a
+  consultation: it never bumps `view_count` or revives a stale row, because
+  autonomous loops list every skill on each pass. Views come only from
+  explicit `skill_record(kind='view')`. The curator checklist shows raw uses,
+  foreground uses, views, and patches. The `skill_watcher` daemon catches
   external edits to `SKILL.md` (Edit/Write directly, not through skill_manage).
 
-- **lesson_usage telemetry (passive reads)** — `lesson_list(k=...)` records a
-  `view_count` bump for each displayed lesson row; `lesson_get(slug)` records a
-  `use_count` bump for the returned body. The curator computes
+- **lesson_usage telemetry (passive reads)** — a foreground `lesson_list(k=...)`
+  records a `view_count` bump for each displayed lesson row; a foreground
+  `lesson_get(slug)` records a `use_count` bump for the returned body. Reads
+  by the curator and other loops are not counted. The curator computes
   `access_frequency × exp(-days_since_access / tau)` over this table and
   surfaces a ranked `STALE LESSONS (dry-run decay ranking)` section for lessons
   with no recent access and low pull-count. The section is advisory only; it is
@@ -1445,12 +1513,37 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   before clustering. Maximal clusters are deduplicated, and
   `curator_review_status()` reports `promotion_candidates` emitted/rejected
   counts plus rejection reasons (`no_meaningful_title_pair`,
-  `high_document_frequency_term`, or `low_body_cohesion`). An unprotected
-  `PROMOTE_TO_SKILL` candidate directs the curator to read every source lesson,
-  create a checklist-style canonical skill with a `Retired lessons` provenance
-  section, validate it, and only then retire those source lessons. Any protected
-  member makes the candidate `HUMAN_REVIEW`, so a background curator never
-  creates a partial promotion or deletes protected memory.
+  `high_document_frequency_term`, or `low_body_cohesion`). Every
+  `PROMOTE_TO_SKILL` candidate, protected members included, directs the
+  evaluator to read every source lesson and write one PROMOTE proposal. The
+  verifier then creates or patches a checklist-style canonical skill with a
+  `Retired lessons` provenance section, validates it, and only then retires the
+  source lessons.
+
+- **Curator verifier phase** — the third child of a batch. The evaluator applies
+  only in-place edits to unprotected entries and ends its report with a
+  `VERIFY_PROPOSALS` block holding every removal, consolidation, merge, split,
+  promotion, and change to a `[PROTECTED]` entry. When the block has at least one
+  `PROPOSAL n:` line, the batch's `verify_state` becomes `pending` and the next
+  tick launches a verifier (`THREADKEEPER_CURATOR_PHASE=verify`, same `curator`
+  write origin, the pass snapshot) whose prompt starts with the curator prefix,
+  so single-flight detection counts it. It tries to refute each proposal against
+  the full bodies, applies the survivors, records `keep_both` verdicts for
+  refuted merges, and writes a provenanced `VERIFY-*` report ending with
+  `CURATOR_VERIFY_COMPLETE`. A failed verifier is retried up to three attempts;
+  endorsement waits until every batch's verification is `none`, `complete`, or
+  exhausted. Server-side, `is_curator_evaluator()` refuses removals and
+  protected-entry edits, and `is_curator_verifier()` grants the protected-entry
+  authority only inside a pass with pass-id and snapshot-dir context; pins stay
+  out of reach of both. The verifier is further limited to the names its
+  batch's proposals mention (`verifier_scope_refusal`, scope file under the
+  pass snapshot, `THREADKEEPER_CURATOR_VERIFY_BATCH`); both the phase and the
+  batch env names are in `CHILD_MCP_ENV_KEYS`, so CLIs that scrub the MCP
+  server environment (Codex) still see them. Each child receives those values
+  only from its private, task-bound Curator launch record; ordinary spawns
+  strip inherited Curator values, and watchdog retries rebuild that record.
+  `curator_batches.eval_mode` records the mode an evaluator actually ran in;
+  only a destructive evaluation can make a batch `pending` for the verifier.
 
 - **Wikilink health** — `wikilink_health(include_archived=True)` is a
   deterministic, read-only scan across every materialized lesson and skill
@@ -1458,8 +1551,9 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   inventory and returns every unresolved target with its source entry. It
   detects global link drift; it does not repair links during a scan.
 
-- **Curator recovery and destructive telemetry** — destructive curator passes
-  receive a pass id and pre-mutation snapshot dir in their environment. When the
+- **Curator recovery and destructive telemetry** — destructive curator children
+  receive pass and pre-mutation snapshot context only through their private,
+  task-bound launch environment. When the
   normal `lesson_append`, `lesson_patch`, `lesson_remove`, or `skill_manage`
   tools run under
   that pass, they emit `events.kind='curator_destructive_action'` rows such as
@@ -1504,9 +1598,10 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   durable pass manifest (`research_state`, `research_attempts`); a researcher
   that fails or leaves a missing, malformed, swapped, or mismatched handoff is
   retried three times, then the batch falls back to a non-mutating evaluator
-  that records `HUMAN_REVIEW`. The recovery snapshot is taken right before a
-  destructive pass's first mutating evaluator.
+  that marks `DEFER`. The recovery snapshot is taken right before a
+  destructive pass's first mutating child.
   `THREADKEEPER_CURATOR_WEB_RESEARCH=0` skips the research phase.
+  A batch whose `## SKILLS (n=0)` section is empty skips research too.
 
 - **skill_manage write_origin** — `THREADKEEPER_WRITE_ORIGIN`
   (`foreground` default | `background_review` | `shadow_review` | loop-specific
@@ -1516,11 +1611,20 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   memory checks.
 
 - **curator_run(stale_after_days, archive_after_days, dry_run=True)** —
-  background cleanup of stale agent-created skills. Never touches
+  background cleanup of stale agent-created skills of every learning-loop
+  origin. Every new destructive Curator pass runs it with `dry_run=False`
+  before freezing its inventory. Activity is the last use (a Skill tool call,
+  or a `/name` slash command of a known skill), a foreground view, or
+  creation; patches are maintenance and do not keep a skill alive. A skill
+  must stay `stale` (tracked in `skill_usage.stale_since`) for the gap between
+  the two windows before it is archived, renewed activity moves it back to
+  `active`, and re-creating or restoring an archived skill starts a fresh
+  lifecycle. Never touches
   `foreground`, `pinned=1`, or **`tier='validated'`** (proven externally).
   Hypothesis-tier ages at half the configured window (unproven skills
   don't linger); observed-tier uses the default window. On apply,
-  physically archives into `.archive/<name>`. Its false-positive rubric uses
+  physically archives into `.archive/<name>` and removes the skill's mirrors,
+  so a later root sync cannot revive it. Its false-positive rubric uses
   `foreground_use_count` and creation age: a background-review skill with
   `fg_uses=0` after 14 days remains eligible for prune review even when
   automation has incremented `patch_count`. Patch activity is maintenance, not
@@ -1617,6 +1721,31 @@ The `support_count` / `contradict_count` columns on `user_dialectic`
 remain as observability counters (incremented by 1 per row regardless of
 weight); confidence and tier are driven by the weighted sums over the
 `dialectic_evidence` table.
+
+### Durable preference-drift pilot
+
+`python -m threadkeeper.dialectic_drift_eval --json` replays a fixed,
+anonymized corpus before any durable-preference supersession policy is changed.
+The corpus has durable changes, explicitly task-scoped exceptions, high-impact
+ambiguous flips on elicitation-capable and unsupported hosts, and poisoned
+observations. It is read-only: it does not call `dialectic_validator` or
+`dialectic_supersede`, and it does not mutate a user model.
+
+Each replay row includes the proposed action, the supporting memory IDs for the
+replacement, the contradicting memory IDs for the old claim, the recent and
+older evidence windows, and a counterfactual explaining what would have kept
+the old claim. A validated preference with one explicit task-scoped exception
+is therefore reported as `preserve`; a high-impact ambiguous flip reports one
+`clarify` action only when elicitation is available, otherwise it is
+non-destructive. Poisoned evidence reports `contain`.
+
+The report records supersession precision/recall, false durable-flip rate,
+clarification rate, and poisoning containment. The pilot thresholds are
+precision ≥95%, recall ≥90%, false durable-flip rate ≤2%, and poisoning
+containment =100%. Passing the synthetic fixture only verifies the evaluator;
+it never enables an automatic policy. Any later policy change requires a
+documented representative pilot run meeting those thresholds and a separate
+reviewed implementation.
 
 ### Tier state machine
 
@@ -1822,6 +1951,18 @@ FTS AND query retries as a BM25-ranked OR query. `search()`,
 `dialog_search()`, and `brief(query=...)` use this engine, so semantic
 availability can no longer disable lexical recall for partially embedded data.
 
+## MCP tool profiles
+
+`server.py` registers the complete catalog, then
+`_mcp.configure_tool_profile()` removes tools before the SDK can answer
+`tools/list`. `THREADKEEPER_TOOL_PROFILE` selects `core`, `coordination`,
+`memory-admin`, `learning-loops`, or compatibility `full`; exact
+`THREADKEEPER_TOOL_INCLUDE` and `THREADKEEPER_TOOL_EXCLUDE` overrides fail
+closed. A child profile is intersected with its parent surface, so a spawned
+child cannot widen its authority. Narrowed profiles retain the read-only
+`capability_search(query)` tool, which returns bounded family metadata without
+revealing hidden tool names.
+
 ## MCP tools
 
 Grouping by module. The runtime `tools/list` registry is the authoritative
@@ -1838,6 +1979,7 @@ below).
 | skills | skill_manage, skill_record, skill_list, curator_run, review_thread |
 | dialectic | dialectic_claim, dialectic_evidence, dialectic_observation_resolve, dialectic_review, dialectic_synthesis, dialectic_supersede |
 | dialectic_feed | dialectic_mine_run, dialectic_mine_status, dialectic_validate_run, dialectic_validate_status |
+| model_router | model_route_write, model_router_run, model_router_status |
 | probes | register_probe, run_probe, record_attempt, reliability_for, weak_spots |
 | core_memory | core_set, core_get, core_list, core_remove |
 | extract | extract_recent, review_candidates, accept_candidate, reject_candidate |
@@ -1854,7 +1996,7 @@ below).
 | evolve_applier | evolve_apply, evolve_apply_conflicted_pr, evolve_apply_roadmap_issue, evolve_apply_curator_report, evolve_mark_applied, evolve_mark_roadmap_issue_applied, evolve_mark_curator_report_applied, evolve_apply_status, evolve_prune_managed_venv |
 | style | style_set, verbatim_user |
 | process_health | mp_health, mp_cleanup |
-| dashboard | mp_dashboard |
+| dashboard | mp_dashboard, open_dashboard |
 | agent_status | agent_status, agent_status_refresh, agent_memory_cleanup |
 | memory_guard | memory_guard_status, memory_guard_check, memory_guard_reclaim |
 | project_scope | memory_scope_status |
@@ -1863,6 +2005,7 @@ below).
 | validate | validate_threads |
 | forget | forget |
 | authority | memory_authorize_action |
+| capabilities | capability_search |
 | invariants | find_invariants |
 | missed_spawns | find_missed_spawns |
 | db_maintenance | db_compact, db_deduplicate_embeddings, workflow_retention_preview |
@@ -1903,7 +2046,18 @@ which calls warrant a prompt (substrate for #26). The status tools
 the legacy human-readable text block for backward compatibility. The contract
 is enforced by `tests/test_tool_annotations.py`.
 
-### MCP resources & prompts (#78)
+### MCP server instructions (#354)
+
+The MCP initialize result has a bounded, static `instructions` value. It tells
+connected clients to load brief/context, maintain the open/note/close lifecycle,
+prefer read-only resources for host-attached memory, and use dry-run plus user
+confirmation before destructive maintenance. The text is generated from the
+same lifecycle fragments as the setup-managed instruction block, with a drift
+test. It contains no rendered memory, local paths, identifiers, credentials, or
+transcript content. Hooks and per-client managed instruction files remain the
+fallback and reinforcement for hosts that ignore server instructions.
+
+### MCP resources, prompts, and Apps (#78, #364)
 
 Tools are only one of MCP's three server primitives. thread-keeper also adopts
 the other two for the read/act split they fit naturally:
@@ -1946,6 +2100,20 @@ the `brief()` / `context()` tools, with identical content. Resource/prompt funct
 their own managers, so they never enter the tool registry (pinned by
 `tests/test_mcp_resources_prompts.py`, which also covers list/read, prompt
 rendering, capability advertisement, and the tool-only fallback).
+
+- **MCP App dashboard** (`dashboard_app.py`, `open_dashboard`) — an MCP
+  Apps-capable host discovers `ui://thread-keeper/dashboard` from the tool's
+  `_meta.ui.resourceUri` and renders its static HTML in a sandboxed iframe. The
+  resource declares an empty network/resource/frame/base CSP and no iframe
+  permissions. Its message handler accepts only JSON-RPC objects from the
+  parent frame, renders structured status data with `textContent`, and exposes
+  only a refresh call back to the same read-only tool. The snapshot opens an
+  existing database with SQLite `mode=ro`, and filters prompts, log excerpts,
+  CIDs, process IDs, credentials, and local paths before they reach the App.
+  It derives loop metadata from `agent_status._LOOP_DEFS`; the existing text
+  tools and `memory://` resources remain unchanged for hosts without the Apps
+  extension. The macOS menu-bar app is a separate optional native frontend over
+  the same status domain.
 
 ### MCP elicitation (#26)
 
@@ -2205,6 +2373,10 @@ unsupported CLI overrides still fall through to the next priority, and
 | `THREADKEEPER_CANDIDATE_REVIEW_INTERVAL_S` | 0 | candidate-reviewer daemon tick, restart-throttled by the last `candidate_review_pass`; 3600 = 1h recommended |
 | `THREADKEEPER_CANDIDATE_REVIEW_MIN` | 3 | min pending candidates before reviewer engages |
 | `THREADKEEPER_CANDIDATE_REVIEW_FLUSH_AGE_S` | 259200 | review an undersized queue once its oldest candidate is this old (0 = threshold only) |
+| `THREADKEEPER_MODEL_ROUTER_INTERVAL_S` | 604800 | model-router pass interval; 0 disables it and `auto` follows the active CLI |
+| `THREADKEEPER_MODEL_ROUTER_FALLBACK_CLI` | codex | CLI for the router's fallback run |
+| `THREADKEEPER_MODEL_ROUTER_FALLBACK_MODEL` | gpt-6.1-sol | model for the router's fallback run |
+| `THREADKEEPER_MODEL_ROUTER_FALLBACK_EFFORT` | xhigh | effort for the router's fallback run |
 | `THREADKEEPER_CURATOR_INTERVAL_S` | 259200 | deep curator audit every three days; set `0` to disable |
 | `THREADKEEPER_CURATOR_MIN_LESSONS` | 3 | min lessons before curator engages |
 | `THREADKEEPER_CURATOR_PROMOTION_MIN_LESSONS` | 3 | dense same-subtopic lessons required before the curator proposes a skill promotion |

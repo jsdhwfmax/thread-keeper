@@ -16,8 +16,19 @@ import weakref
 from pathlib import Path
 from typing import TypeVar
 
-from .config import CURATOR_REPORTS_DIR, DB_PATH, EMBED_DIM, _ENV_FILE
+from .config import (
+    CURATOR_REPORTS_DIR,
+    DB_PATH,
+    EMBED_DIM,
+    STORAGE_PROFILE,
+    _ENV_FILE,
+)
 from .permissions import harden_storage_paths
+from .storage import (
+    PROFILE_SQLCIPHER,
+    connect as open_storage_connection,
+    row_factory as storage_row_factory,
+)
 from .read_context import is_read_only_call
 from .sync import SYNC_SCHEMA_VERSION
 
@@ -756,6 +767,23 @@ CREATE TABLE IF NOT EXISTS project_scope_migration_report (
     unresolved_rows INTEGER NOT NULL DEFAULT 0
 );
 
+-- Public MCP Tasks-extension handles for eligible spawned work. The opaque
+-- task_id is deliberately separate from tasks.id: internal task IDs remain
+-- short display identifiers and must never become cross-client handles.
+CREATE TABLE IF NOT EXISTS mcp_task_handles (
+    task_id                TEXT PRIMARY KEY,
+    internal_task_id       TEXT NOT NULL UNIQUE,
+    owner_key              TEXT NOT NULL,
+    status                 TEXT NOT NULL CHECK(status IN
+                           ('working','completed','cancelled','failed')),
+    status_message         TEXT,
+    created_at             INTEGER NOT NULL,
+    last_updated_at        INTEGER NOT NULL,
+    cancel_requested_at    INTEGER,
+    cancel_accepted_at     INTEGER,
+    result_json            TEXT
+);
+
 -- Cross-process resource-control requests. The memory guard uses this as a
 -- small mailbox so one MCP server can ask peer servers to unload models/caches
 -- without sharing process memory.
@@ -855,6 +883,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_started  ON tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent   ON tasks(parent_cid);
 CREATE INDEX IF NOT EXISTS idx_tasks_spawned  ON tasks(spawned_cid);
 CREATE INDEX IF NOT EXISTS idx_tasks_running  ON tasks(ended_at) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mcp_task_handles_owner ON mcp_task_handles(owner_key);
 CREATE INDEX IF NOT EXISTS idx_resource_controls_pending
     ON resource_controls(target_pid, action, handled_at, expires_at);
 CREATE INDEX IF NOT EXISTS idx_github_rate_budget_cooldown
@@ -1014,6 +1043,16 @@ END;
 # an incompatible global schema version and breaking still-running clients.
 # Keep this block strictly backward-compatible: CREATE ... IF NOT EXISTS only.
 ADDITIVE_RUNTIME_SCHEMA = """
+-- Lesson body vectors for the write-time duplicate gate and lesson_list(query).
+-- Keyed by body hash and embedding fingerprint, so a body is encoded once per
+-- install and a model change simply misses the cache.
+CREATE TABLE IF NOT EXISTS lesson_vectors (
+    text_sha256 TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    vector      BLOB NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (text_sha256, fingerprint)
+);
 CREATE TABLE IF NOT EXISTS daemon_health (
     name              TEXT PRIMARY KEY,
     thread_alive      INTEGER NOT NULL,
@@ -1071,6 +1110,32 @@ CREATE TABLE IF NOT EXISTS workflow_retention_state (
     last_at      INTEGER NOT NULL,
     last_outcome TEXT NOT NULL
 );
+
+-- Model router: one row per routing decision. The latest row per role is the
+-- current route; older rows are the history the next pass reads. Local only:
+-- catalogs differ per machine, so these tables are not synced.
+CREATE TABLE IF NOT EXISTS model_routes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    role        TEXT NOT NULL,
+    cli         TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    effort      TEXT NOT NULL DEFAULT '',
+    reason      TEXT NOT NULL,
+    pass_id     TEXT NOT NULL,
+    decided_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_model_routes_role
+    ON model_routes(role, decided_at DESC);
+CREATE TABLE IF NOT EXISTS model_router_passes (
+    pass_id     TEXT PRIMARY KEY,
+    roles_json  TEXT NOT NULL,
+    attempt     TEXT NOT NULL CHECK(attempt IN ('primary','fallback')),
+    task_id     TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'running'
+                CHECK(status IN ('running','complete','failed')),
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER
+);
 """
 
 # These columns are independently additive: current databases deliberately do
@@ -1085,6 +1150,20 @@ ADDITIVE_RUNTIME_COLUMN_MIGRATIONS = (
     "ALTER TABLE curator_batches ADD COLUMN workflow_batch_sha256 TEXT",
     "ALTER TABLE curator_batches ADD COLUMN workflow_batch_summary TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE curator_batches ADD COLUMN workflow_compacted_at INTEGER",
+    # Phase three: an independent verifier tries to refute the evaluator's
+    # destructive proposals and applies the survivors. 'none' means the
+    # evaluator proposed nothing (or has not finished).
+    "ALTER TABLE curator_batches ADD COLUMN verify_state TEXT NOT NULL DEFAULT 'none'",
+    "ALTER TABLE curator_batches ADD COLUMN verify_task_id TEXT",
+    "ALTER TABLE curator_batches ADD COLUMN verify_attempts INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE curator_batches ADD COLUMN verify_failure TEXT",
+    # The mode the batch's evaluator actually ran in: a research failure
+    # downgrades one batch of a destructive pass to advisory, and its
+    # proposals must then never reach the verifier.
+    "ALTER TABLE curator_batches ADD COLUMN eval_mode TEXT",
+    # When curator_run moved a skill to 'stale'; archiving needs a dwell time
+    # in that state, so a long-idle skill is never archived on its first run.
+    "ALTER TABLE skill_usage ADD COLUMN stale_since INTEGER",
     "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_at INTEGER",
     "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_body TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE evolve_research_handoffs ADD COLUMN retention_summary TEXT NOT NULL DEFAULT ''",
@@ -1254,14 +1333,14 @@ def _set_user_version(conn: sqlite3.Connection, version: int) -> None:
     conn.execute(f"PRAGMA user_version = {int(version)}")
 
 
-def _is_duplicate_column_error(exc: sqlite3.OperationalError) -> bool:
+def _is_duplicate_column_error(exc: BaseException) -> bool:
     return "duplicate column name" in str(exc).lower()
 
 
 def _apply_column_migration(conn: sqlite3.Connection, ddl: str) -> None:
     try:
         conn.execute(ddl)
-    except sqlite3.OperationalError as exc:
+    except Exception as exc:
         if _is_duplicate_column_error(exc):
             return
         logger.warning("SQLite schema migration DDL failed: %s", ddl)
@@ -1299,13 +1378,14 @@ _PROJECT_SCOPED_TABLES = (
 
 
 def _backfill_project_scopes(conn: sqlite3.Connection) -> None:
-    """Quarantine legacy memory and record an auditable migration report.
+    """Classify legacy memory and record an auditable migration report.
 
     Old rows do not carry trustworthy repository provenance.  Tasks are the
     exception: their persisted working directory can still be resolved while
-    it exists, so they are safely backfilled. Everything else is explicitly
-    unresolved rather than treated as global.  This report is intentionally
-    retained for operators deciding how to classify old data.
+    it exists, so they are scoped to their project. Every other legacy row
+    becomes global: before namespaces existed all memory was recalled in
+    every project, and quarantining it would silently drop the user's rules,
+    threads and history from every brief. New memory is scoped from now on.
     """
     from .project_scope import resolve_project_namespace
 
@@ -1326,6 +1406,11 @@ def _backfill_project_scopes(conn: sqlite3.Connection) -> None:
                 "UPDATE tasks SET project_id=?, memory_scope='project' WHERE id=?",
                 (namespace.project_id, row["id"]),
             )
+    for table in _PROJECT_SCOPED_TABLES:
+        conn.execute(
+            f"UPDATE {table} SET memory_scope='global' "
+            "WHERE memory_scope='unresolved'"
+        )
     now = int(time.time())
     for table in _PROJECT_SCOPED_TABLES:
         counts = dict(conn.execute(
@@ -1467,11 +1552,36 @@ def _run_schema_migrations(conn: sqlite3.Connection, from_version: int) -> None:
 
 
 def _ensure_additive_runtime_schema(conn: sqlite3.Connection) -> None:
-    """Materialize backward-compatible tables without a version migration."""
-    for statement in _iter_sql_statements(ADDITIVE_RUNTIME_SCHEMA):
-        conn.execute(statement)
+    """Materialize backward-compatible tables without a version migration.
+
+    SCHEMA is replayed too: it is CREATE ... IF NOT EXISTS only, and a table
+    added to it without a version bump must still reach current-version DBs.
+    """
+    for script in (SCHEMA, ADDITIVE_RUNTIME_SCHEMA):
+        for statement in _iter_sql_statements(script):
+            conn.execute(statement)
     for ddl in ADDITIVE_RUNTIME_COLUMN_MIGRATIONS:
         _apply_column_migration(conn, ddl)
+    _ensure_project_namespaces(conn)
+
+
+def _ensure_project_namespaces(conn: sqlite3.Connection) -> None:
+    """Bring a v5 database that predates project namespaces up to them.
+
+    Namespaces were added under the existing schema version 5, so a database
+    that was already at v5 skipped their migration and lacked the columns
+    every scoped query needs. Add them idempotently and backfill scopes once:
+    the migration report is empty exactly when the backfill never ran.
+    """
+    for ddl in LEGACY_COLUMN_MIGRATIONS:
+        _apply_column_migration(conn, ddl)
+    if conn.execute(
+        "SELECT 1 FROM project_scope_migration_report LIMIT 1"
+    ).fetchone():
+        return
+    _backfill_project_scopes(conn)
+    for idx in POST_SCHEMA_INDEXES:
+        conn.execute(idx)
 
 
 def _guard_managed_checkout_live_db() -> None:
@@ -1505,13 +1615,14 @@ def _ensure_schema(conn: sqlite3.Connection, wait_s: float = 600.0) -> None:
             )
         try:
             conn.execute("BEGIN IMMEDIATE")
-        except sqlite3.OperationalError:
-            if time.monotonic() >= deadline:
-                logger.warning(
-                    "timed out after %.0fs waiting for a concurrent schema "
-                    "migration to finish",
-                    wait_s,
-                )
+        except Exception as exc:
+            if not _is_lock_error(exc) or time.monotonic() >= deadline:
+                if _is_lock_error(exc):
+                    logger.warning(
+                        "timed out after %.0fs waiting for a concurrent schema "
+                        "migration to finish",
+                        wait_s,
+                    )
                 raise
             time.sleep(0.5)  # another process is likely migrating; re-poll
             continue
@@ -1529,15 +1640,12 @@ def _ensure_schema(conn: sqlite3.Connection, wait_s: float = 600.0) -> None:
                 f"thread-keeper build supports ({CURRENT_SCHEMA_VERSION})"
             )
         conn.commit()
-    except sqlite3.OperationalError:
+    except Exception:
         logger.warning(
             "SQLite schema migration failed; user_version remains below %s",
             CURRENT_SCHEMA_VERSION,
             exc_info=True,
         )
-        conn.rollback()
-        raise
-    except Exception:
         conn.rollback()
         raise
 
@@ -1560,7 +1668,7 @@ def _execute_startup_pragma(
         try:
             conn.execute(sql)
             return
-        except sqlite3.OperationalError as exc:
+        except Exception as exc:
             if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
                 raise
             time.sleep(0.1)
@@ -1583,7 +1691,18 @@ def _open_connection(*, autocommit: bool = False,
     }
     if autocommit:
         kwargs["isolation_level"] = None
-    conn = sqlite3.connect(str(DB_PATH), **kwargs)
+    if STORAGE_PROFILE == PROFILE_SQLCIPHER:
+        conn = open_storage_connection(
+            DB_PATH,
+            profile=STORAGE_PROFILE,
+            # SQLCipher stores must be explicitly initialized through tk-storage;
+            # opening a missing/wrong-key file may never create a replacement.
+            create=False,
+            timeout=kwargs["timeout"],
+            autocommit=autocommit,
+        )
+    else:
+        conn = sqlite3.connect(str(DB_PATH), **kwargs)
     try:
         conn.execute(f"PRAGMA busy_timeout={max(0, int(busy_timeout_ms))}")
         # synchronous is per-connection. Unlike journal_mode, setting it does
@@ -1595,7 +1714,7 @@ def _open_connection(*, autocommit: bool = False,
         raise
     if _VEC_AVAILABLE is None:
         _VEC_AVAILABLE = vec_loaded
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = storage_row_factory(STORAGE_PROFILE)
     return conn, vec_loaded
 
 
@@ -1715,7 +1834,7 @@ def bootstrap_db(force: bool = False) -> None:
             DB_PATH,
             env_file=_ENV_FILE,
             curator_reports_dir=CURATOR_REPORTS_DIR,
-            create_db=True,
+            create_db=STORAGE_PROFILE != PROFILE_SQLCIPHER,
         )
         conn: sqlite3.Connection | None = None
         try:
@@ -1777,7 +1896,7 @@ def read_db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _is_lock_error(exc: sqlite3.OperationalError) -> bool:
+def _is_lock_error(exc: BaseException) -> bool:
     code = getattr(exc, "sqlite_errorcode", None)
     if isinstance(code, int):
         # Extended SQLite result codes retain the primary code in the low byte.

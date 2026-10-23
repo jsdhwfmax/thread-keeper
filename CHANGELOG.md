@@ -7,14 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
-- **Project namespaces and default-deny cross-project recall (#359).** Memory
-  now carries an explicit project/global/shared scope and a path-free Git
-  namespace. Briefs, retrieval, resources, and learning inputs stay within the
-  current project unless global/shared memory is explicit; cross-project search
-  is opt-in, provenance-marked, and audited. Ambiguous legacy rows are
-  quarantined from automatic recall with per-table migration accounting.
+- **Fixed: Curator child authority is no longer ambient process state (#366).**
+  Pass and snapshot values are attached only to a private, task-bound Curator
+  launch. Ordinary spawns strip inherited values, report/research writes verify
+  their task, child, pass, batch, role, and origin, and watchdog retries restore
+  only recorded Curator launch data.
 
-## v0.19.2 — 2026-10-16
+## v0.20.1 — 2026-10-23
 
 ### Fixed
 
@@ -22,6 +21,183 @@ version bumps follow semver per the policy in
   task history, and child failure notifications use the stored role before
   considering prompt hints. Custom roles remain visible as child tasks;
   legacy rows without a role retain the prompt-based fallback.
+
+## v0.20.0 — 2026-10-22
+
+- **Fixed: the lesson instructions only name tools agents can call.** The
+  memory-admin profile now includes `lesson_neighbors` and `lesson_patch`, and
+  Codex auto-approves the read-only `lesson_neighbors`.
+
+- **Fixed: skill aging no longer archives skills people still use.** A skill
+  now has to stay stale for a while before it is archived (`stale_since`),
+  renewed use brings a stale skill back, `/name` slash commands of known
+  skills and foreground views count as activity, re-creating or restoring an
+  archived skill starts a fresh lifecycle, aging only runs in destructive
+  passes, and the root sync backs up a leftover copy before removing it.
+
+- **Fixed: lesson gates hold up at store scale.** Encoding the whole store in
+  one request always hit the embedding host's 3-second timeout, so the semantic
+  gate and `lesson_list(query)` silently fell back. Lesson vectors now persist
+  in `lesson_vectors`, missing ones are encoded in chunks within a time budget,
+  and progress survives a timeout. Also: a same-slug rewrite is never merged
+  into a different lesson, the verifier writes verified umbrellas without the
+  gate, dedup never edits pinned or validated lessons, a loop child cannot skip
+  the gates with a foreground `source`, `new_despite` takes several neighbours,
+  a loop rewrite of a human lesson keeps its source so the backfill leaves it
+  protected, and lexical ranking works in any script and favours lessons that
+  cover the query.
+
+- **Fixed: the Curator verifier is scoped and works on every CLI.** Review
+  found that the verify phase never reached a Codex child's MCP server, that a
+  long pass aged its report authorizations out of a 200-event window, that a
+  research-failed batch could still reach the verifier, that the verifier could
+  touch any non-pinned entry, and that the evaluator could still edit protected
+  or pinned skills. The phase and a new batch env are forwarded to child MCP
+  servers; authorization lookups are exact; each batch records its evaluation
+  mode; the verifier may only change names its proposals mention; skill writes
+  get the same curator limits as lessons; the Evolve report applier can no
+  longer remove anything; promotion clusters never count pinned lessons;
+  curator identity reaches children under one lock; and verifier reports age
+  out with their pass.
+
+- **Fixed: long lesson slugs lost their origin.** `iter_lessons` parsed only
+  the first 200 characters of a BEGIN marker, so a lesson with a very long slug
+  read as having no origin and was wrongly treated as protected.
+
+- **Changed: lesson-only Curator batches skip web research.** The researcher
+  only covers fixed, skill-related public topics, yet every batch launched
+  one. Batches without skills now go straight to the evaluator.
+
+- **Fixed: junk skills no longer spread or come back.** The root sync mirrored
+  a primary skill without validating it, and re-imported a deleted or archived
+  skill from any older copy left in another CLI root. It now validates before
+  mirroring, removes stale leftovers of a removed skill (a copy written after
+  the removal still counts as a new install), and a regression test pins every
+  skill root used in tests inside the test home. Learning-loop writes may no
+  longer grow a SKILL.md past 20 000 characters; detail goes to `references/`.
+
+- **Fixed: unused loop-created skills now age out.** `curator_run` was never
+  called and only looked at one early origin, so no skill ever went stale.
+  Every new Curator pass now runs it for every learning-loop origin, counts
+  only use (not views or maintenance patches) as activity, and removes an
+  archived skill's mirrors so a sync cannot bring it back.
+
+- **Added: `lesson_list(query=...)` ranks lessons by relevance.** A session
+  used to see only the newest lessons (20 by default), so almost the whole
+  store was invisible whatever the task. With a query the listing is ranked
+  semantically (token overlap without embeddings) and shows each lesson's
+  summary; the managed instructions now pass the opening request.
+
+- **Changed: agents, not people, settle Curator decisions.** Nothing is routed
+  to `HUMAN_REVIEW` any more. The evaluator applies only in-place edits to
+  unprotected entries and lists every removal, consolidation, merge, split,
+  promotion and protected-entry change in a `VERIFY_PROPOSALS` block. A new
+  verifier phase re-reads the evidence, tries to refute each proposal, and
+  applies the survivors inside the pass snapshot, writing a provenanced
+  `VERIFY-*` report. Server-side, the evaluator can no longer remove anything
+  or change a protected entry, and only the verifier may change foreground or
+  legacy entries; pinned entries stay keep-only and are marked `[PINNED]`.
+  Insufficient evidence is now `DEFER` for a later pass.
+  Because every delete is now verified, the per-pass delete cap
+  (`THREADKEEPER_CURATOR_MAX_DESTRUCTIVE_PER_PASS`) defaults to 30 instead of 10.
+
+- **Fixed: maintenance reads no longer count as usage.** `skill_list` bumped
+  `view_count` and revived stale state on every row at each call, and curator
+  children reading lessons supplied most lesson "uses". Listing skills is now
+  telemetry-free and only foreground lesson reads are counted, so staleness and
+  retention scores reflect real consultation.
+
+- **Fixed: every lesson write passes the duplicate gates.** Foreground
+  `lesson_append` calls skipped the slug and semantic gates, and the lexical
+  contradiction check matched most lessons and switched the gates off for loop
+  writers too. Now all writers are gated; a foreground author overrides a
+  refusal only with `new_despite=<neighbour-slug>`, a debunk of a near-duplicate
+  must patch that lesson, refusals are logged as `lesson_refused`, and the
+  write-only `lesson_reconciliation` events are no longer emitted. Lesson
+  vectors are cached per process. Replacements keep the creator's origin, and
+  each new Curator pass backfills legacy or mislabeled origin markers.
+
+- **Fixed: project namespaces reach databases already at schema v5, and
+  legacy memory stays recallable.** Namespaces were added under the existing
+  v5 schema, so a database that was already at v5 skipped their migration and
+  every scoped query failed on the missing `project_id` column. Such databases
+  now get the columns and a one-time backfill on their next start. Legacy rows
+  without reliable provenance become `global` instead of `unresolved`, so a
+  user's rules, threads and history stay in every brief; new memory is scoped.
+
+- **Fixed: the daemon host no longer inherits a child's identity.** When a
+  curator or model-router child's MCP server happened to spawn the host, the
+  host kept that child's pass id, egress consumer and conversation id. The
+  curator then restored the stale pass id after every batch, so later children
+  of every loop inherited it, and all host-spawned children named the dead
+  child as their parent. The host now drops per-child identity variables and
+  gets its own conversation id on every spawn.
+
+- **Added: model router for `auto` roles.** A new weekly loop reviews spawn
+  telemetry for every role whose CLI is set to `auto` and picks its CLI, model
+  and effort, with a reason per decision. The router runs on Claude Opus at
+  `max` effort and reruns on `gpt-6.1-sol` at `xhigh` when that run fails.
+  New tools: `model_route_write`, `model_router_run`, `model_router_status`.
+  **Behaviour change:** roles already set to `SPAWN__LOOP__<ROLE>=auto` are
+  routed once the router records a decision (the first pass runs soon after
+  upgrade). Set `THREADKEEPER_MODEL_ROUTER_INTERVAL_S=0` to keep the old
+  meaning (follow the active CLI).
+
+- **Fixed: tables added after schema v5 now reach existing databases.**
+  Durable Curator passes, staged embedding upgrades, and memory authority added
+  tables to the baseline schema without a version bump. Databases already at v5
+  never received them, so the host's initial transcript ingest crashed on every
+  start with `no such table: memory_authority`. Every bootstrap now replays the
+  idempotent baseline schema, and a test keeps every baseline statement
+  `CREATE ... IF NOT EXISTS`.
+
+- **Fixed: an interrupted conflict repair with unstaged edits no longer
+  blocks Evolve apply.** When a conflict-repair child was killed after staging
+  a resolution and then editing the same file again, merge recovery used
+  `git merge --abort`, which refuses to drop those edits. Every scheduled pass
+  then stopped with `open_pr_merge_abort_failed`. Recovery now resets the
+  orphaned merge to `HEAD` after archiving the full tracked diff, which
+  already includes those edits.
+
+- **Added: durable MCP Tasks handles for headless spawned work (#370).**
+  Clients that advertise `io.modelcontextprotocol/tasks` receive an opaque,
+  authorization-bound handle for eligible `spawn(visible=False)` calls and can
+  poll `tasks/get` or cooperatively request cancellation with `tasks/cancel`.
+  Existing clients retain the synchronous spawn response.
+
+- **Transient Evolve-applier retries no longer consume an apply interval
+  (#365).** A child launch or a completed empty check advances the cursor;
+  no-child provisioning, GitHub, claim/race, lock, and spawn-refusal outcomes
+  preserve it, emit edge-triggered telemetry, and retry on a bounded short
+  cadence. Apply status now reports the latest attempt, latest successful
+  dispatch, and a pending retry time.
+
+- **Opt-in SQLCipher storage profile (#360).** `threadkeeper[encrypted]` adds
+  an OS-secret-store-backed encrypted database mode without changing the
+  default SQLite installation. `tk-storage` initializes, validates, rekeys,
+  recovers interrupted rekeys, and migrates stores; profile-aware backup and
+  restore keep encrypted snapshots encrypted.
+
+- **MCP lifecycle instructions (#354).** Server initialization now publishes
+  concise, static guidance for loading brief/context, maintaining thread
+  lifecycle, choosing read-only resources, and confirming destructive
+  maintenance. Setup-managed instruction files render the same lifecycle
+  fragments, while hooks and managed files remain compatibility reinforcement
+  for clients that do not surface server instructions.
+
+- **Role-scoped MCP tool profiles and deferred discovery (#353).** Servers
+  apply `core`, `coordination`, `memory-admin`, `learning-loops`, or `full`
+  before advertising tools. Exact include/exclude overrides fail closed, child
+  profiles cannot widen their parent surface, and `capability_search` supplies
+  bounded read-only metadata for hidden tool families. New setup registrations
+  start at `core`; existing unconfigured registrations retain `full`.
+
+- **Project namespaces and default-deny cross-project recall (#359).** Memory
+  now carries an explicit project/global/shared scope and a path-free Git
+  namespace. Briefs, retrieval, resources, and learning inputs stay within the
+  current project unless global/shared memory is explicit; cross-project search
+  is opt-in, provenance-marked, and audited. Ambiguous legacy rows are
+  quarantined from automatic recall with per-table migration accounting.
 
 ## v0.19.1 — 2026-10-14
 
@@ -463,6 +639,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Durable preference-drift evaluation pilot (#339).** Added a fixed,
+  anonymized replay corpus and a read-only report for durable change,
+  task-local exception, high-impact ambiguity, and poisoning. The report
+  includes supersession precision/recall, false durable-flip and clarification
+  rates, poisoning containment, cited evidence IDs, and counterfactuals. It
+  does not alter the production supersession policy.
+
 - **Dangling wikilink health check (#202).** `wikilink_health()` deterministically
   scans all materialized lesson and skill bodies for unresolved `[[slug]]`
   references and reports each source entry with its dead target. The read-only
@@ -569,6 +752,7 @@ version bumps follow semver per the policy in
   resume the local/remote feature branch before reading or editing, and
   `agent_status` no longer treats `ERR`/spawn-failure pass events as successful
   health-clock updates.
+
 - **Fixed: curator report application now requires pass provenance (#143).**
   Before a Curator child is dispatched, its parent authorizes each exact report
   destination in a `curator_pass` event. The spawned Curator report writer
@@ -651,9 +835,19 @@ version bumps follow semver per the policy in
   capped at discovery time. `last_patched_at` continues to record the edit
   signal used by the watcher.
 
-## v0.17.0 — 2026-09-30
+## v0.17.0 — 2026-10-18
 
 ### Added
+
+- **Added: portable, read-only MCP App dashboard (#364).** Supporting hosts
+  can open `ui://thread-keeper/dashboard` through `open_dashboard`. The
+  sandboxed App renders a privacy-filtered structured status projection for
+  autonomous loops, running children, budgets, task history, failures, and
+  recent materializations. Loading or refreshing it only opens an existing
+  SQLite database read-only: it does not create sessions, bootstrap state,
+  start daemons, reconcile tasks, or write telemetry. Hosts without MCP Apps
+  support receive a text fallback and keep the existing status tools and
+  `memory://` resources unchanged.
 
 - **Staged model-compatibility gate (#337).** Embedding upgrades now build a
   resumable target generation beside one durable active pointer, validate full

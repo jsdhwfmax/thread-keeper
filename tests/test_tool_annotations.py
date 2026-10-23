@@ -26,14 +26,15 @@ import pytest
 
 # --- read-only tools: pure queries, no state mutation ------------------------
 READ_TOOLS = {
-    "agent_status", "brief", "candidate_review_status", "compost",
+    "agent_status", "brief", "capability_search", "candidate_review_status", "compost",
     "config_watch_status", "context", "core_get", "core_list",
     "curator_review_status", "dialectic_mine_status", "dialectic_review",
     "dialectic_synthesis", "dialectic_validate_status", "dialog_search",
+    "model_router_status",
     "evolve_apply_status", "evolve_review", "expand_concept", "find_invariants",
     "find_missed_spawns", "list_concepts",
     "memory_authorize_action", "memory_guard_status", "memory_scope_status",
-    "mp_dashboard", "mp_health", "neighbors", "peers",
+    "mp_dashboard", "mp_health", "neighbors", "open_dashboard", "peers",
     "pending_distillates", "pickup_candidates", "reliability_for",
     "review_candidates", "run_probe", "search", "shadow_review_status",
     "skill_validate", "spawn_budget_status", "spawn_status",
@@ -68,7 +69,7 @@ WRITE_TOOLS = {
     "export_distillates", "extract_recent",
     "idle_thread", "inbox", "ingest", "lesson_append", "lesson_violation", "lesson_restore",
     "link", "live_status", "lesson_get", "lesson_list", "mark_skill_materialized",
-    "memory_guard_reclaim", "note",
+    "memory_guard_reclaim", "model_route_write", "model_router_run", "note",
     "open_dialog_window", "open_thread", "presence", "record_attempt",
     "register_concept", "register_probe", "reject_candidate", "release_pickup",
     "respond", "review_thread", "search_via_parent", "session_end",
