@@ -7,13 +7,7 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
-- **Fixed: Curator child authority is no longer ambient process state (#366).**
-  Pass and snapshot values are attached only to a private, task-bound Curator
-  launch. Ordinary spawns strip inherited values, report/research writes verify
-  their task, child, pass, batch, role, and origin, and watchdog retries restore
-  only recorded Curator launch data.
-
-## v0.20.1 — 2026-10-23
+## v0.21.1 — 2026-10-24
 
 ### Fixed
 
@@ -21,6 +15,45 @@ version bumps follow semver per the policy in
   task history, and child failure notifications use the stored role before
   considering prompt hints. Custom roles remain visible as child tasks;
   legacy rows without a role retain the prompt-based fallback.
+
+## v0.21.0 — 2026-10-23
+
+- **Added: the brief shows which lessons this session consulted (#332).**
+  A `consulted_lessons` section lists each lesson listed or read since the
+  session started, with its view and use counts and the last full recall.
+
+- **Added: a worktree safety warning when other sessions are live (#335).**
+  With live peers, the brief's `worktree_safety` section tells the agent to
+  confirm it has its own git worktree before staging, committing or pushing.
+
+- **Durable preference-drift evaluation pilot (#339).** Added a fixed,
+  anonymized replay corpus and a read-only report for durable change,
+  task-local exception, high-impact ambiguity, and poisoning. The report
+  includes supersession precision/recall, false durable-flip and clarification
+  rates, poisoning containment, cited evidence IDs, and counterfactuals. It
+  does not alter the production supersession policy.
+
+- **Added: every session sees all lesson titles.** Each lesson write refreshes
+  `~/.threadkeeper/lesson-index.md`, a sorted list of lesson titles, and the
+  managed instructions import it, so Claude Code loads it with `CLAUDE.md`.
+  Before, lessons reached a session only when the agent called `lesson_list`
+  itself. On 160 real user prompts, an agent that saw only the index opened
+  65-70% of the lessons judges marked relevant, and 51-59% of its picks were
+  relevant. Injecting the lessons closest to each prompt by embedding reached
+  25% recall at 12% precision, so prompt-time injection was not added.
+  `thread-keeper-setup` writes the index on install.
+
+- **Fixed: the session brief reaches the model again.** Claude Code replaces
+  hook output over 10 000 characters with a 2 KB preview and a file path. The
+  lean brief had grown past that, so new sessions saw only the first part of
+  the core rules. `tk-brief.sh` now caps the injection at 9 000 characters,
+  cut at a line break, with a pointer to `brief()` for the rest.
+
+- **Fixed: Curator child authority is no longer ambient process state (#366).**
+  Pass and snapshot values are attached only to a private, task-bound Curator
+  launch. Ordinary spawns strip inherited values, report/research writes verify
+  their task, child, pass, batch, role, and origin, and watchdog retries restore
+  only recorded Curator launch data.
 
 ## v0.20.0 — 2026-10-22
 
@@ -639,13 +672,6 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
-- **Durable preference-drift evaluation pilot (#339).** Added a fixed,
-  anonymized replay corpus and a read-only report for durable change,
-  task-local exception, high-impact ambiguity, and poisoning. The report
-  includes supersession precision/recall, false durable-flip and clarification
-  rates, poisoning containment, cited evidence IDs, and counterfactuals. It
-  does not alter the production supersession policy.
-
 - **Dangling wikilink health check (#202).** `wikilink_health()` deterministically
   scans all materialized lesson and skill bodies for unresolved `[[slug]]`
   references and reports each source entry with its dead target. The read-only
@@ -834,6 +860,17 @@ version bumps follow semver per the policy in
   edit's mtime; filesystems without birth-time support fall back to mtime
   capped at discovery time. `last_patched_at` continues to record the edit
   signal used by the watcher.
+
+### Added
+
+- **Forgetting-aware memory evaluation (#371).** The existing memory-quality
+  harness now drives a frozen real-store lifecycle through repeated
+  correction, dialectic supersession, consolidation, targeted source erasure,
+  and process restart. It reports per-class negative credit when stale or
+  invalidated evidence is returned beside the current fact, and gates FTS and
+  hybrid post-forgetting retrieval at a deterministic 1.0 score. Forgetting
+  now also removes supersession descendants whose only provenance came from
+  the erased source, while retaining independently corroborated claims.
 
 ## v0.17.0 — 2026-10-18
 

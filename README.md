@@ -1012,6 +1012,18 @@ within an 8-second budget per call; a call that runs out falls back to the
 lexical ranking and the next call resumes. Each line shows the lesson's summary. Without a query a session
 would only ever see the newest few lessons, whatever the task.
 
+**Lesson index.** Agents rarely search lessons on their own, so every lesson
+write also refreshes `lesson-index.md` next to `lessons.md`
+(`~/.threadkeeper/lesson-index.md` by default), a sorted list of all lesson
+titles (about 35 000 characters for 550 lessons). The managed
+instructions import it (`@~/.threadkeeper/lesson-index.md`), so a CLI that
+supports imports, such as Claude Code, loads every title with its instructions;
+other CLIs are told to read the file at session start. Each title is the rule,
+and the agent opens the ones that apply with `lesson_get`. On 160 real user
+prompts an agent that saw only this index opened 65-70% of the lessons judged
+relevant, and 51-59% of its picks were relevant. Injecting the lessons whose
+embedding is closest to the prompt reached 25% recall at 12% precision.
+
 Lesson access is tracked the same way skill access is: `lesson_list` increments
 `lesson_usage.view_count` for displayed rows and `lesson_get` increments
 `lesson_usage.use_count` for the returned lesson. Only foreground reads count:
@@ -2219,6 +2231,12 @@ It reports these headline groups over a fixed ground-truth set:
 - **retrieval latency** — mean / p50 / p95 / max wall-clock milliseconds. With
   `--semantic`, the backend is reported as `hybrid`, because dense candidates
   augment rather than replace FTS.
+- **forgetting lifecycle** — the bundled mutation fixture writes a fact,
+  corrects it twice, supersedes its dialectic claim, consolidates duplicate
+  verbatim evidence, forgets the old source, and reopens the store in a new
+  process. It reports a separate score for thread notes, verbatim memory,
+  dialectic claims, and lessons or skills.
+
 - **outcome classification** — retrieval failure, reasoning failure,
   stale-memory use, removed-memory use, and privacy-policy violation.
 
@@ -2253,6 +2271,13 @@ Private mode emits aggregate metrics only — no case rows, failure details,
 retrieved context, or replayed answer is written to stdout, artifacts, or the
 repository. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the corpus
 contract and migration-gate interpretation.
+
+The lifecycle score gives current evidence `+1` and subtracts `0.5` for every
+obsolete or invalidated fact that the same retrieval path returns. A current
+fact alongside stale evidence therefore does not receive full credit. The
+post-forgetting and post-restart stages must score `1.0` in both deterministic
+FTS and hybrid variants; the JSON report names the lifecycle stage and memory
+class for any release-gate failure.
 
 ## Evaluating learning-loop decision quality
 
