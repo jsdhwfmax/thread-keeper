@@ -2557,6 +2557,10 @@ and numeric IDs match; numeric and string IDs are distinct. Sealed continuation
 state expires after five minutes; an interrupted write with no terminal result
 is rejected on replay within that connection. Durable workflow retries use
 their application handles, such as a router pass ID.
+The release gate also runs the pinned official MCP conformance requirement sets
+for both versions against a loopback-only Streamable HTTP view of this same
+registry. Its version-specific expected-failure baselines are checked for both
+new failures and stale entries; stdio keeps the ThreadKeeper-specific coverage.
 
 Detailed map in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 Open work in [docs/ROADMAP.md](docs/ROADMAP.md) and the

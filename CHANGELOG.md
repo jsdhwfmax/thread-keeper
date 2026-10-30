@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+## v0.22.0 — 2026-10-27
+
+- **Added: official MCP conformance release gates (#379).** CI now runs pinned
+  `2025-11-25` and `2026-07-28` requirement sets through a loopback-only
+  Streamable HTTP view of the production MCP registry. Version-specific,
+  justified expected-failure baselines fail on both regressions and stale
+  entries; focused real-stdio compatibility tests remain in place.
 - **Tested: the installed Claude Code task gate (#399).** Contract tests pin
   the generated matcher and managed script, replay current `Agent` and legacy
   `Task` payloads, and cover blocking, advisory, disabled, exempt, and unrelated

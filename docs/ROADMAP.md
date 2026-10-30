@@ -217,12 +217,8 @@ an idempotent reconciliation path. Curator launch-authority isolation is
 ## 2026-10-14 reviewer audit
 
 This pass reconciled the full issue history, current implementation, legacy
-Evolve suggestions, and the October research digest. Four distinct gaps remain:
+Evolve suggestions, and the October research digest. The remaining work is:
 
-- **Official MCP conformance release gate (#379).** Run pinned official
-  conformance requirement sets for both supported protocol versions through a
-  test-only transport backed by the production handler registry. Retain focused
-  stdio tests for ThreadKeeper-specific discovery, metadata, and replay rules.
 - ✅ DONE (#380). **Privacy-safe action/outcome memory.** The offline-only
   prototype records bounded normalized actions, coarse outcomes, stable error
   fingerprints, sequence/recovery links, pointer provenance, authority, and
@@ -266,6 +262,12 @@ registry suggestions share one repair lifecycle and are consolidated in #373.
 
 ## Closed
 
+- **Official MCP conformance release gate (#379).** CI runs the pinned official
+  requirement sets for `2025-11-25` and `2026-07-28` over a loopback-only
+  Streamable HTTP view of the production stdio registry. Version-specific,
+  justified expected-failure baselines are stale-checked; focused real-stdio
+  coverage retains legacy initialization, `server/discover`, per-request
+  `_meta`, and replay behavior.
 - Source-missing skill reconciliation (#373): validation marks registry
   records without a readable source unavailable and non-compatible, preserves
   the prior lifecycle for restoration, and gives the Curator verifier a
