@@ -7,6 +7,11 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: source-missing skill reconciliation (#373).** Validation now marks
+  registry records without a readable source unavailable and non-compatible,
+  preserves their lifecycle for a later source restore, and gives Curator a
+  snapshotted, verifier-only cleanup path for confirmed registry-only orphans.
+
 - **Added: Curator skill audits detect missing inline resources and repeated
   prose (#382).** Markdown links and conservative path-like inline-code spans
   now report missing local resources without treating URLs, absolute paths,
