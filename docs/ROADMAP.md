@@ -196,13 +196,18 @@ The post-2026-10-14 open backlog is also now represented explicitly: spawned
 child memory authority (#385), validated host trace context (#386), contextual
 index text for short memories (#387), persisted task-role status (#389),
 consent and rollback for learned host-wide mutations (#390), semantic
-export/import (#395), lesson audit integrity (#396), installed Agent/Workflow
-gate tests (#399), and automation-owned Evolve autoland (#400). Managed-skill
+export/import (#395), lesson audit integrity (#396), installed task-gate
+contract coverage (#399), and automation-owned Evolve autoland (#400). Managed-skill
 mirror convergence (#388) now verifies every consumer before success and has
 an idempotent reconciliation path. Curator launch-authority isolation is
  complete in #366.
 
 ## Implemented after the audit
+
+- **Installed task-gate contract coverage (#399).** Tests replay current Claude
+  Code `Agent` and legacy `Task` events through the managed script, pin the
+  generated matcher and mode behavior, and keep unsupported `Workflow` and
+  unrelated tools silent.
 
 - **Versioned semantic memory bundle (#395).** `tk-semantic-bundle` exports
   deterministic, hash-checked JSONL records for portable semantic memory while
