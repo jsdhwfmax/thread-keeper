@@ -203,8 +203,7 @@ provider/CLI spawn adapters remain the deliberate execution boundary.
 The post-2026-10-14 open backlog is also now represented explicitly: spawned
 child memory authority (#385), validated host trace context (#386), contextual
 index text for short memories (#387), persisted task-role status (#389),
-consent and rollback for learned host-wide mutations (#390), semantic
-export/import (#395), lesson audit integrity (#396), installed task-gate
+semantic export/import (#395), lesson audit integrity (#396), installed task-gate
 contract coverage (#399), and automation-owned Evolve autoland (#400). Managed-skill
 mirror convergence (#388) now verifies every consumer before success and has
 an idempotent reconciliation path. Curator launch-authority isolation is
@@ -221,6 +220,11 @@ an idempotent reconciliation path. Curator launch-authority isolation is
   deterministic, hash-checked JSONL records for portable semantic memory while
   excluding raw dialog, task logs, and personal-memory records by default.
   Import is dry-run first and retains source IDs under a local namespace.
+
+- **Done (#390): consent and rollback for learned host-wide mutations.**
+  Background lesson and skill writes refuse unguarded host changes. Existing
+  advice carries owner-review warnings through Curator and retrieval, protected
+  records stay unchanged, and telemetry retains only categories/fingerprints.
 
 ## 2026-10-14 reviewer audit
 

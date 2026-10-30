@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: learned changes to host settings need consent and rollback (#390).**
+  Background writers cannot save unconditional host proxy resets or similar
+  changes to credentials, global settings, startup services, permissions, or
+  packages. Existing unsafe advice shows an owner-review warning; protected
+  records stay unchanged until the owner repairs them. Lesson and skill writes,
+  Curator review, retrieval, and external skill-edit monitoring use the same
+  check. Review telemetry stores only categories and content fingerprints.
 - **Added: explicit spawned-child memory capabilities (#385).** Public children
   default to read-only access. Proposal mode queues supported memory changes for
   foreground review; only private Curator/Evolve launchers grant direct writes.
