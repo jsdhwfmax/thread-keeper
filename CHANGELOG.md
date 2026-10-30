@@ -7,6 +7,16 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Fixed: the Evolve applier finishes one pull request before it starts the
+  next task.** While any applier PR is open, no new roadmap issue, Curator
+  report, or evolve suggestion starts. The applier works on the oldest open PR
+  until it lands: a red PR is first updated onto the newest base, and if it
+  stays red a fix child reads the failing logs and pushes a fix to the same
+  branch; a green draft is marked ready. After three repair or fix children a
+  PR waits for a human, and a full stall is reported as a failure. Before
+  this, PRs with a red check waited forever while new tasks kept opening more
+  of them.
+
 - **Fixed: notification causes remain available when macOS hides previews.**
   The menu-bar app keeps a bounded local history with selectable details and
   imports its own retained delivered notifications. `--notification-history`
@@ -43,6 +53,7 @@ version bumps follow semver per the policy in
   existing assignment no longer stands in for task quality.
   Router children receive a dedicated profile exposing their route-write
   tool; a missing parent permission prevents a doomed child launch.
+
 
 ## v0.22.0 — 2026-10-24
 
