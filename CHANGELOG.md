@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: Curator skill audits detect missing inline resources and repeated
+  prose (#382).** Markdown links and conservative path-like inline-code spans
+  now report missing local resources without treating URLs, absolute paths,
+  shell fragments, headings, frontmatter, or fenced examples as files. The
+  audit also reports normalized paragraphs of at least 160 characters that
+  occur three or more times within one skill.
+
 - **Fixed: the Evolve applier finishes one pull request before it starts the
   next task.** While any applier PR is open, no new roadmap issue, Curator
   report, or evolve suggestion starts. The applier works on the oldest open PR
