@@ -7,6 +7,12 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Fixed: managed skill writes now verify every mirror before success (#388).**
+  Each mirror uses a staged tree replacement followed by a complete relative
+  file-set and SHA-256 check. Failures retry three times and return redacted,
+  per-consumer diagnostics instead of a false success; canonical copies and
+  trash artifacts remain recoverable through `skill_manage(action='reconcile')`.
+
 - **Added: source-missing skill reconciliation (#373).** Validation now marks
   registry records without a readable source unavailable and non-compatible,
   preserves their lifecycle for a later source restore, and gives Curator a

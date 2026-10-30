@@ -1528,7 +1528,7 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
 
 - **skill_manage(action, …)** — a single atomic tool. Actions:
   `create | edit | patch | write_file | remove_file | delete | restore |
-  cleanup_orphan`. `cleanup_orphan` is scoped to a Curator verifier and can
+  reconcile | cleanup_orphan`. `cleanup_orphan` is scoped to a Curator verifier and can
   archive or remove an already validated registry-only orphan with
   `orphan_action='archive'|'remove'` after a recovery snapshot is written.
   Frontmatter validator: strict YAML, `name` regex + ≤64 chars,
@@ -1540,8 +1540,16 @@ Optional subfolders: `references/`, `templates/`, `scripts/`, `assets/`.
   `patch` revalidates the result before writing. A non-foreground `create`,
   `edit`, or `patch` may not grow SKILL.md past `SKILL_MD_SOFT_CAP_CHARS`
   (20 000): it is refused with a hint to move detail into `references/` via
-  `write_file`, while shrinking or same-size rewrites stay allowed. Every successful write
-  mirrors the whole skill directory into all configured roots:
+  `write_file`, while shrinking or same-size rewrites stay allowed. Every
+  managed write holds a per-skill lock, swaps each mirror tree from a staging
+  directory, then compares the complete relative file set and SHA-256 hashes
+  before reporting success. Copy and verification failures retry three times;
+  an unresolved target returns `ERR mirror_partial_failure` with a stable
+  consumer label and relative file diagnostics, never an absolute path. The
+  canonical write or trash artifact remains recoverable, and
+  `skill_manage(action="reconcile", name=...)` idempotently retries either
+  publication or removal without changing skill telemetry. Successful writes
+  mirror the whole skill directory into all configured roots:
   `~/.claude/skills/`, `~/.codex/skills/`,
   `~/.gemini/config/skills/` for Antigravity, existing `~/.agents/skills/`,
   `THREADKEEPER_EXTRA_SKILLS_DIRS`, and `~/.threadkeeper/skills/`.
