@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+## v0.22.0 — 2026-10-26
+
+- **Added: versioned semantic memory bundles (#395).** `tk-semantic-bundle`
+  exports inspectable, deterministic JSONL records with hashes, source
+  namespaces, provenance, authority, temporal, and deletion metadata. Its
+  default export excludes raw dialog, task logs, and personal memory; import
+  validates before a dry-run conflict report or explicit apply.
 - **Fixed: managed skill writes now verify every mirror before success (#388).**
   Each mirror uses a staged tree replacement followed by a complete relative
   file-set and SHA-256 check. Failures retry three times and return redacted,

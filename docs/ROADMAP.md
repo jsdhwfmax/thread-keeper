@@ -200,7 +200,14 @@ export/import (#395), lesson audit integrity (#396), installed Agent/Workflow
 gate tests (#399), and automation-owned Evolve autoland (#400). Managed-skill
 mirror convergence (#388) now verifies every consumer before success and has
 an idempotent reconciliation path. Curator launch-authority isolation is
-complete in #366.
+ complete in #366.
+
+## Implemented after the audit
+
+- **Versioned semantic memory bundle (#395).** `tk-semantic-bundle` exports
+  deterministic, hash-checked JSONL records for portable semantic memory while
+  excluding raw dialog, task logs, and personal-memory records by default.
+  Import is dry-run first and retains source IDs under a local namespace.
 
 ## 2026-10-14 reviewer audit
 
