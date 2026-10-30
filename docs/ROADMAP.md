@@ -204,13 +204,14 @@ deprecated it in favor of direct provider integration, so ThreadKeeper's
 provider/CLI spawn adapters remain the deliberate execution boundary.
 
 The post-2026-10-14 open backlog is also now represented explicitly: spawned
-child memory authority (#385), validated host trace context (#386), contextual
-index text for short memories (#387), persisted task-role status (#389),
-semantic export/import (#395), lesson audit integrity (#396), installed task-gate
-contract coverage (#399), and automation-owned Evolve autoland (#400). Managed-skill
-mirror convergence (#388) now verifies every consumer before success and has
-an idempotent reconciliation path. Curator launch-authority isolation is
- complete in #366.
+child memory authority (#385), contextual index text for short memories (#387),
+verified skill-mirror convergence (#388), persisted task-role status (#389),
+consent and rollback for learned host-wide mutations (#390), semantic
+export/import (#395), lesson audit integrity (#396), installed task-gate
+contract coverage (#399), and automation-owned Evolve autoland (#400).
+Managed-skill mirror convergence (#388) now verifies every consumer before
+success and has an idempotent reconciliation path. Curator launch-authority
+isolation is complete in #366.
 
 ## Implemented after the audit
 
@@ -276,6 +277,11 @@ already recognizes `Task`, `Agent`, and `Workflow`. The two source-missing
 registry suggestions share one repair lifecycle and are consolidated in #373.
 
 ## Closed
+
+- Validated host trace context (#386): modern MCP requests can continue a
+  valid W3C host trace through the MCP operation, spawned work, retries, and
+  child operations. Strict bounds keep optional trace state private, and older
+  MCP clients continue to start local traces.
 
 - **Official MCP conformance release gate (#379).** CI runs the pinned official
   requirement sets for `2025-11-25` and `2026-07-28` over a loopback-only
