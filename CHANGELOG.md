@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Added: explicit spawned-child memory capabilities (#385).** Public children
+  default to read-only access. Proposal mode queues supported memory changes for
+  foreground review; only private Curator/Evolve launchers grant direct writes.
+  Tool and storage checks reject spoofed origins and missing grants. Generated
+  memory keeps observed authority, and SQL/FTS/vector candidate selection is
+  capped to the launch namespace. Existing memory scopes are preserved.
+
 - **Fixed: Evolve autoland changes only automation-owned pull requests (#400).**
   The sweep now requires a same-repository generated branch or an explicit
   ownership marker before it can repair, update, ready, or merge a pull

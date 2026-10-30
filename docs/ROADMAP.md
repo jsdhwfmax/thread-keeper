@@ -8,6 +8,14 @@ remains a live question.
 
 ---
 
+## Spawned-child durable-memory access (#385)
+
+✅ DONE. Public children default to read-only memory; proposal mode queues
+supported writes for foreground review. Private Curator/Evolve launchers own
+direct-write capabilities. Durable tools and storage enforce task-bound grants,
+child/proposal content remains observed, and SQL candidate selection respects
+the launch namespace. Schema v6 preserves existing memory scopes.
+
 ## 2026-10-30 reviewer audit
 
 - **Keep task-log access inside the task spool.** Agents allowed to inspect

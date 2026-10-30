@@ -491,6 +491,9 @@ def _result_with_mirror_outcome(result: str, outcome: dict[str, list[dict[str, o
 
 def _mirror_skill_dir(name: str) -> dict[str, list[dict[str, object]]]:
     """Copy and verify the canonical tree in every configured mirror."""
+    from ..memory_access import require_write
+
+    require_write()
     return _mirror_outcome(name)
 
 
@@ -503,6 +506,8 @@ def mirror_skill_from_path(skill_path: str) -> Optional[str]:
     or None if the path is absent/invalid. Best-effort mirrors are still
     handled by _mirror_skill_dir after the canonical copy lands.
     """
+    from ..memory_access import require_write
+    require_write()
     raw = skill_path.strip()
     if not raw:
         return None
@@ -533,6 +538,9 @@ def mirror_skill_from_path(skill_path: str) -> Optional[str]:
 
 def _unmirror_skill(name: str) -> dict[str, list[dict[str, object]]]:
     """Remove and verify every mirror copy of a managed skill."""
+    from ..memory_access import require_write
+
+    require_write()
     return _mirror_outcome(name, remove=True)
 
 
@@ -1042,6 +1050,8 @@ def _skill_md_growth_refusal(current: str, updated: str) -> str:
 
 
 def _action_create(name: str, content: str, description: str, source: str = "") -> str:
+    from ..memory_access import require_write
+    require_write()
     sdir = _skill_dir(name)
     md = _skill_md_path(name)
     if md.exists():
@@ -1091,6 +1101,8 @@ def _action_create(name: str, content: str, description: str, source: str = "") 
 
 
 def _action_edit(name: str, content: str, source: str = "") -> str:
+    from ..memory_access import require_write
+    require_write()
     md = _skill_md_path(name)
     if not md.exists():
         return f"ERR skill_not_found={name}"
@@ -1122,6 +1134,8 @@ def _action_edit(name: str, content: str, source: str = "") -> str:
 
 
 def _action_patch(name: str, old_string: str, new_string: str, source: str = "") -> str:
+    from ..memory_access import require_write
+    require_write()
     md = _skill_md_path(name)
     if not md.exists():
         return f"ERR skill_not_found={name}"
@@ -1167,6 +1181,8 @@ def _action_patch(name: str, old_string: str, new_string: str, source: str = "")
 
 
 def _action_write_file(name: str, sub_path: str, content: str, source: str = "") -> str:
+    from ..memory_access import require_write
+    require_write()
     sdir = _skill_dir(name)
     if not sdir.exists():
         return f"ERR skill_not_found={name}"
@@ -1212,6 +1228,8 @@ def _action_write_file(name: str, sub_path: str, content: str, source: str = "")
 
 
 def _action_remove_file(name: str, sub_path: str) -> str:
+    from ..memory_access import require_write
+    require_write()
     sdir = _skill_dir(name)
     if not sdir.exists():
         return f"ERR skill_not_found={name}"
@@ -1248,6 +1266,8 @@ def _action_delete(
     force: bool = False,
     replacement_name: str = "",
 ) -> str:
+    from ..memory_access import require_write
+    require_write()
     conn = get_db()
     _ensure_session(conn)
     row = conn.execute(
@@ -1466,6 +1486,8 @@ def _restore_skill_usage_row(
 
 
 def _action_restore(name: str) -> str:
+    from ..memory_access import require_write
+    require_write()
     sdir = _skill_dir(name)
     if sdir.exists():
         return f"ERR skill_exists={name}"
@@ -1495,6 +1517,9 @@ def _action_restore(name: str) -> str:
 
 def _action_reconcile(name: str) -> str:
     """Retry a failed mirror publication without changing canonical state."""
+    from ..memory_access import require_write
+
+    require_write()
     remove = not _skill_dir(name).exists()
     outcome = _mirror_outcome(name, remove=remove)
     mode = "removal" if remove else "copy"
@@ -1878,6 +1903,7 @@ def review_thread(thread_id: str,
         permission_mode="auto",
         role="archivist",
         write_origin="background_review",
+        memory_access="propose",
         slim=True,
         # De-privileged (issue #76): path-scoped skill/lesson tools only —
         # no bare Edit/Read/Write. Reference files go through
