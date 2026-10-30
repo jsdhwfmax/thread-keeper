@@ -7,6 +7,13 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Fixed: Curator audits cannot make lessons look recently consulted (#402).**
+  Only live evaluator and verifier tasks with a server-issued Curator launch
+  record read lessons without changing usage counts or access timestamps.
+  Ordinary task reads still count, even with a maintenance origin label.
+  Repeated audits, multiple batches, and retries preserve the consultation
+  history used to rank stale lessons.
+
 - **Added: learned changes to host settings need consent and rollback (#390).**
   Background writers cannot save unconditional host proxy resets or similar
   changes to credentials, global settings, startup services, permissions, or

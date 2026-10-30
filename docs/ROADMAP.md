@@ -177,9 +177,12 @@ This pass reconciled current `main`, the complete open/closed issue history,
 the pending legacy Evolve queue, and the 2026-10-20 research digest. Four
 issue-backed items were identified:
 
-- ✅ DONE (#402). **Curator-neutral lesson reads.** Curator and other
-  non-foreground reads leave consultation counters and `last_used_at`
-  unchanged; foreground reads continue to record real use.
+- ✅ DONE (#402). **Curator-neutral lesson reads.** Live evaluator and
+  verifier tasks with a server-issued Curator launch read complete lesson
+  bodies without changing consultation counts or timestamps. Foreground and
+  ordinary task reads still count, even with a maintenance-looking origin
+  label. Repeated passes, multiple batches, and retries preserve the
+  consultation telemetry used for decay and stale-lesson ranking.
 - **Authenticated source-tracked skill updates (#403).** Resolve immutable
   commits, retain whole-directory provenance, verify supported detached
   publisher signatures, and make unsigned-source policy explicit before an
