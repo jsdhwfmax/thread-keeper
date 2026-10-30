@@ -281,9 +281,11 @@ def evolve_apply_status() -> str:
         for action, pr in pr_queue[:10]:
             title = str(pr.get("title") or "")[:90].replace("\n", " ")
             state = str(pr.get("mergeStateStatus") or "?").upper()
+            reason = str(pr.get("automationOwnershipWaitReason") or "")
+            suffix = f"  ({reason})" if reason else ""
             line = (
                 f"  #{int(pr['number'])}  {action}  {state}  "
-                f"{pr.get('headRefName') or '?'}  {title}"
+                f"{pr.get('headRefName') or '?'}  {title}{suffix}"
             )
             if _pr_is_applier_owned(pr):
                 used = _pr_repair_attempts(conn, int(pr["number"]))

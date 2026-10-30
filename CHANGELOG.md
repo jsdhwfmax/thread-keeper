@@ -7,6 +7,11 @@ version bumps follow semver per the policy in
 
 ## [Unreleased]
 
+- **Fixed: Evolve autoland changes only automation-owned pull requests (#400).**
+  The sweep now requires a same-repository generated branch or an explicit
+  ownership marker before it can repair, update, ready, or merge a pull
+  request. Manual and fork pull requests remain read-only.
+
 ## v0.22.0 — 2026-10-27
 
 - **Added: official MCP conformance release gates (#379).** CI now runs pinned

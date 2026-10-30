@@ -1138,20 +1138,24 @@ with that name instead of minting overlapping roadmap PRs.
 
 The Evolve applier is the downstream implementer. `evolve_apply_roadmap_issue()`
 picks one open GitHub issue at a time (`roadmap` label first, then FIFO), but
-the automatic pass first sweeps the open PRs authored by the account
-thread-keeper's `gh` acts as — yours: applier, reviewer, and hand-made PRs
-alike. A PR from any other account (a collaborator, a bot, a fork) is never
-updated, repaired, or merged. If the PR sweep itself cannot read GitHub state
-or the `gh` account, the pass fails closed instead of taking fresh work blind.
-The sweep squash-merges the oldest non-draft PR GitHub reports `CLEAN` (up to
-date, required checks green) through the protected merge API, pinned to the
-head SHA it saw green, and then asks GitHub to update the oldest `BEHIND` one —
-the "Update branch" button — so CI reruns against the new base. Open
-hand-made work in progress as a draft: those drafts are never merged. Strict
-branch protection lets only one PR merge per base commit, so PRs land one at a
-time, oldest first. Between full passes the daemon repeats only this cheap
-landing sweep every 15 minutes, so a green PR lands minutes after its checks
-finish; it skips while any reviewer/applier git writer runs.
+the automatic pass first sweeps eligible PRs from the account thread-keeper's
+`gh` acts as. A PR must be in this repository and have a recognized automation
+branch (`roadmap/issue-…`, `evolve/apply-…`, or `docs/roadmap-audit-…`) or a
+standalone ownership marker in its body. Applier PRs use
+`<!-- thread-keeper:evolve-applier-pr -->`; reviewer roadmap PRs use
+`<!-- thread-keeper:evolve-reviewer-roadmap-pr -->`. Manual and fork PRs, and
+PRs with missing or conflicting ownership signals, stay read-only. If the PR
+sweep itself cannot read GitHub state or the `gh` account, the pass fails
+closed instead of taking fresh work blind.
+
+The sweep squash-merges the oldest eligible non-draft PR GitHub reports
+`CLEAN` (up to date, required checks green) through the protected merge API,
+pinned to the head SHA it saw green, and then asks the oldest eligible `BEHIND`
+PR to update its branch so CI reruns against the new base. Strict branch
+protection lets only one PR merge per base commit, so PRs land one at a time,
+oldest first. Between full passes the daemon repeats only this cheap landing
+sweep every 15 minutes, so a green PR lands minutes after its checks finish; it
+skips while any reviewer/applier git writer runs.
 
 The applier keeps one applier PR (`roadmap/…` or `evolve/…` head branch in
 this repository) in flight at a time. While any is open it starts no new

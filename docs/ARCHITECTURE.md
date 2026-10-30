@@ -810,17 +810,18 @@ moving the high-water forward; `force=True` bypasses this due gate.
 - **evolve_applier** (`evolve_applier.start_evolve_applier_daemon`) — once per
   `EVOLVE_APPLY_INTERVAL_S` (default 0 = off) first fetches open GitHub PRs via
   `gh pr list --json mergeStateStatus,mergeable,headRefOid,author,...` and
-  keeps only PRs authored by the account `gh` acts as (`gh api user`, cached
-  per auth context for an hour); another account's PR is never updated,
-  repaired, or merged. Each kept PR is classified (`_pr_landing_action`):
-  `repair` for a conflicted merge state (`DIRTY` / `CONFLICTING`) on a
-  same-repository `roadmap/…` or `evolve/…` head branch, `update` for `BEHIND`,
-  `fix` for such an applier branch whose finished `statusCheckRollup` holds a
-  red check run or commit status, `ready` for an applier draft whose checks
-  are all green, `merge` for `CLEAN` / `HAS_HOOKS`, and `wait` for everything
-  else (checks still running, `UNKNOWN`, another base, a hand-made PR with
-  conflicts, red checks or a draft, or `EVOLVE_AUTOLAND=0`). This sweep is a
-  hard preflight before new work: if
+  accepts only PRs authored by the account `gh` acts as (`gh api user`, cached
+  per auth context for an hour) that are in the same repository and have
+  durable automation ownership. Ownership is a generated applier/reviewer
+  branch or a standalone applier/reviewer body marker. Missing repository data,
+  forks, manual branches, and conflicting signals stay visible as `wait` and
+  are never changed. Each eligible PR is classified (`_pr_landing_action`):
+  `repair` for a conflicted applier PR, `update` for `BEHIND`, `fix` for an
+  applier branch whose finished `statusCheckRollup` holds a red check run or
+  commit status, `ready` for an applier draft whose checks are all green,
+  `merge` for `CLEAN` / `HAS_HOOKS`, and `wait` for everything else (checks
+  still running, `UNKNOWN`, another base, reviewer conflicts, or
+  `EVOLVE_AUTOLAND=0`). This sweep is a hard preflight before new work: if
   PR state or the `gh` account cannot be read, the pass records
   `conflicted_pr_fetch_error` and does not pick a fresh roadmap issue, Curator
   report, or promoted evolve suggestion. Fork PRs are never fed to the
