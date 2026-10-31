@@ -289,6 +289,13 @@ registry suggestions share one repair lifecycle and are consolidated in #373.
 
 ## Closed
 
+- **Protected lesson freshness flags (#372).** Curator records verified,
+  contradicted, or unsubstantiated claim checks without editing protected text.
+  Reads and task-time lesson lists warn with the official source and check
+  time. Reaudits update one claim record; changed lesson revisions or observed
+  source revisions require a recheck. Content protection and approval rules
+  remain in force.
+
 - Validated host trace context (#386): modern MCP requests can continue a
   valid W3C host trace through the MCP operation, spawned work, retries, and
   child operations. Strict bounds keep optional trace state private, and older

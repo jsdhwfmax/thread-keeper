@@ -9,6 +9,13 @@ version bumps follow semver per the policy in
 
 ## v0.22.0 — 2026-10-28
 
+- **Added: factual freshness checks for protected lessons (#372).** Curator can
+  record whether an exact claim is verified, contradicted, or unsubstantiated
+  against an official source without editing the lesson. Lesson reads and
+  task-time lists warn when a claim needs attention. Repeated audits update one
+  record, and changed lesson or observed source revisions require a recheck.
+  Existing content protection and approval rules still apply.
+
 - **Added: Curator workers receive small, verified audit slices (#413).** The
   parent keeps the full pass audit for coordination and provenance, while each
   worker receives only its assigned skills and the related checks. Lesson-only
@@ -19,6 +26,7 @@ version bumps follow semver per the policy in
   short-lived links to notes, thread excerpts, and bounded dialog windows.
   Linked reads recheck access, invalidation, erasure, and retention without
   changing stored memory. Hosts that ignore links keep the existing text.
+
 ## v0.22.0 — 2026-10-27
 
 - **Added: connected trace views for supported MCP hosts (#386).** A valid
