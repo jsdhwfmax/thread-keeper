@@ -9,6 +9,11 @@ version bumps follow semver per the policy in
 
 ## v0.22.0 — 2026-10-28
 
+- **Added: Curator workers receive small, verified audit slices (#413).** The
+  parent keeps the full pass audit for coordination and provenance, while each
+  worker receives only its assigned skills and the related checks. Lesson-only
+  batches receive an explicit no-skills document. Retries reuse the saved
+  slice and stop when its contents or binding no longer match.
 - **Inspect exact memory evidence from search results (#405).** Search tools
   keep their current text and also return structured hits with private,
   short-lived links to notes, thread excerpts, and bounded dialog windows.

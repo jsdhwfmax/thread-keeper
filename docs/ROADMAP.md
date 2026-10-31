@@ -8,6 +8,15 @@ remains a live question.
 
 ---
 
+## 2026-10-28 curator scale audit
+
+- **Batch-scoped Curator audit slices (#413).** Keep the full audit manifest
+  for parent coordination, but give each worker only the skill records and
+  related checks for its assigned batch. Lesson-only workers receive a small
+  no-skills marker, and retries verify the same saved slice before use.
+
+
+---
 ## Spawned-child durable-memory access (#385)
 
 ✅ DONE. Public children default to read-only memory; proposal mode queues
